@@ -1,0 +1,58 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ডেপ্লয় — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="deploy"><main>
+<h2>৭. ডেপ্লয়মেন্ট</h2>
+<h3>ব্যাকেন্ড → Vercel</h3>
+<script type="text/plain" data-f="vercel.json (backend root)">
+{
+  "version": 2,
+  "builds": [{ "src": "index.js", "use": "@vercel/node" }],
+  "routes": [{ "src": "/(.*)", "dest": "index.js" }]
+}
+</script>
+<script type="text/plain" data-f="Terminal">
+# Vercel CLI ইনস্টল ও ডেপ্লয়
+npm install -g vercel
+vercel login
+vercel
+# Dashboard → Settings → Environment Variables এ দাও: DB_USER, DB_PASS, JWT_SECRET
+</script>
+<h3>ফ্রন্টেন্ড → Vercel</h3>
+<script type="text/plain" data-f="vercel.json (Frontend — SPA rewrite)">
+{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
+</script>
+<div class="box i">VITE_ দিয়ে শুরু সব variable (FIREBASE ও <code>VITE_API_URL=https://your-backend.vercel.app</code>) Vercel Dashboard এ দিতে হবে।</div>
+<h3>ফ্রন্টেন্ড → Firebase Hosting</h3>
+<script type="text/plain" data-f="Terminal">
+npm install -g firebase-tools
+firebase login
+npm run build            # dist/ ফোল্ডার তৈরি হবে
+firebase init hosting    # public=dist, single-page app = Yes
+firebase deploy --only hosting
+</script>
+<script type="text/plain" data-f="firebase.json">
+{
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  }
+}
+</script>
+<div class="box s">Deploy শেষে Firebase Console → Authentication → Settings → Authorized domains এ <code>your-project.web.app</code> (ও Vercel URL) যোগ করো।</div>
+<h3>CORS সমস্যা সমাধান</h3>
+<script type="text/plain" data-f="Backend">
+app.use(cors({
+  origin: [
+    'http://localhost:5173',              // লোকাল ডেভ
+    'https://your-project.web.app',       // Firebase Hosting
+    'https://your-frontend.vercel.app',   // Vercel Frontend
+  ],
+  credentials: true,
+}));
+</script>
+<h2>৮. Quick Reference</h2>
+<table><tr><th>কাজ</th><th>কমান্ড</th></tr><tr><td>Frontend dev</td><td><code>npm run dev</code></td></tr><tr><td>Frontend build</td><td><code>npm run build</code></td></tr><tr><td>Backend dev</td><td><code>npm run dev</code> (nodemon)</td></tr><tr><td>Firebase deploy</td><td><code>firebase deploy --only hosting</code></td></tr><tr><td>Vercel deploy</td><td><code>vercel</code> বা <code>vercel --prod</code></td></tr><tr><td>Vercel env</td><td><code>vercel env ls</code></td></tr></table>
+<h3>Common Mistakes ও সমাধান</h3>
+<table><tr><th>সমস্যা</th><th>সমাধান</th></tr><tr><td>CORS Error</td><td>Backend এ frontend origin যোগ করো</td></tr><tr><td>JWT token undefined</td><td>localStorage এ সেভ হচ্ছে কিনা দেখো</td></tr><tr><td>Firebase Auth not working</td><td>Authorized domains এ domain যোগ করো</td></tr><tr><td>Vercel 404 on refresh</td><td>vercel.json এ rewrites দাও</td></tr><tr><td>Firebase Hosting 404</td><td>firebase.json এর rewrites দেখো</td></tr><tr><td>env undefined</td><td>VITE_ prefix আছে কিনা দেখো</td></tr><tr><td>MongoDB connection fail</td><td>DB_USER / DB_PASS ঠিক আছে?</td></tr></table>
+<h2>🖥️ প্র্যাকটিস</h2>
+<div class="term" data-tasks="npm install -g vercel|vercel login|vercel|npm install -g firebase-tools|firebase login|firebase init hosting|firebase deploy --only hosting"></div>
+</main><script src="app.js"></script></body></html>

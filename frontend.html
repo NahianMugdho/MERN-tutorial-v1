@@ -1,0 +1,197 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ফ্রন্টেন্ড — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="frontend"><main>
+<h2>৪. ফ্রন্টেন্ড কোড</h2>
+<script type="text/plain" data-f="src/routes/Router.jsx">
+import { createBrowserRouter } from 'react-router-dom';
+import MainLayout from '../layouts/MainLayout';
+import Home from '../pages/Home';
+import Login from '../pages/Login';
+import Dashboard from '../pages/Dashboard';
+import PrivateRoute from './PrivateRoute';
+
+// সব রুটের তালিকা
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <MainLayout />, // Navbar+Footer সহ লেআউট
+    children: [
+      { path: '/', element: <Home /> },
+      { path: '/login', element: <Login /> },
+      // Dashboard শুধু লগইন ইউজারের জন্য — PrivateRoute দিয়ে মোড়ানো
+      { path: '/dashboard', element: <PrivateRoute><Dashboard /></PrivateRoute> },
+    ],
+  },
+]);
+export default router;
+</script>
+<script type="text/plain" data-f="src/routes/PrivateRoute.jsx">
+import { Navigate, useLocation } from 'react-router-dom';
+import useAuth from '../hooks/useAuth';
+import Loader from '../components/Loader';
+
+const PrivateRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <Loader />; // Firebase চেক শেষ না হওয়া পর্যন্ত অপেক্ষা
+  // লগইন না থাকলে /login এ পাঠাও, আগের লোকেশন মনে রাখো
+  if (!user) return <Navigate to='/login' state={{ from: location }} replace />;
+  return children; // লগইন থাকলে পেজ দেখাও
+};
+export default PrivateRoute;
+</script>
+<script type="text/plain" data-f="src/main.jsx">
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { RouterProvider } from 'react-router-dom';
+import AuthProvider from './context/AuthContext';
+import router from './routes/Router';
+import './index.css';
+
+// AuthProvider দিয়ে পুরো অ্যাপে ইউজার তথ্য শেয়ার
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <AuthProvider><RouterProvider router={router} /></AuthProvider>
+  </React.StrictMode>
+);
+</script>
+<script type="text/plain" data-f="src/utils/axiosSecure.js">
+import axios from 'axios';
+// বেস URL সেট করা
+const axiosSecure = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000' });
+
+// Request interceptor — প্রতি রিকোয়েস্টে টোকেন জুড়ে দেয়
+axiosSecure.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access-token');
+  if (token) config.headers.authorization = `Bearer ${token}`;
+  return config;
+});
+
+// Response interceptor — 401/403 হলে লগআউট
+axiosSecure.interceptors.response.use((res) => res, (error) => {
+  if (error.response?.status === 401 || error.response?.status === 403) {
+    localStorage.removeItem('access-token');
+    window.location.href = '/login';
+  }
+  return Promise.reject(error);
+});
+export default axiosSecure;
+</script>
+<h2>৫. Firebase Authentication</h2>
+<div class="box i"><b>Console সেটআপ:</b> নতুন Project → Authentication → Email/Password ও Google enable → Project Settings থেকে SDK config কপি → Authorized domains এ production domain যোগ।</div>
+<script type="text/plain" data-f="src/firebase/firebase.config.js">
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+// কী গুলো .env.local থেকে আসে (VITE_ prefix বাধ্যতামূলক)
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+};
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app); // অথ অবজেক্ট এক্সপোর্ট
+export default app;
+</script>
+<script type="text/plain" data-f=".env.local">
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
+VITE_API_URL=http://localhost:5000
+</script>
+<script type="text/plain" data-f="src/context/AuthContext.jsx">
+import { createContext, useEffect, useState } from 'react';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
+  onAuthStateChanged, GoogleAuthProvider, signInWithPopup, updateProfile } from 'firebase/auth';
+import { auth } from '../firebase/firebase.config';
+import axios from 'axios';
+
+export const AuthContext = createContext(null);
+const googleProvider = new GoogleAuthProvider();
+
+const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const register = (email, password) => { setLoading(true); return createUserWithEmailAndPassword(auth, email, password); }; // Email Register
+  const login = (email, password) => { setLoading(true); return signInWithEmailAndPassword(auth, email, password); };       // Email Login
+  const googleLogin = () => { setLoading(true); return signInWithPopup(auth, googleProvider); };                           // Google Login
+  const logout = async () => { localStorage.removeItem('access-token'); return signOut(auth); };                         // Logout
+  const updateUserProfile = (name, photo) => updateProfile(auth.currentUser, { displayName: name, photoURL: photo });     // প্রোফাইল আপডেট
+
+  // Auth অবস্থা পরিবর্তন হলে চলে + JWT টোকেন নেওয়া
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser?.email) {
+        // ব্যাকেন্ড থেকে JWT নিয়ে localStorage এ রাখো
+        const res = await axios.post(`${import.meta.env.VITE_API_URL}/jwt`, { email: currentUser.email });
+        localStorage.setItem('access-token', res.data.token);
+      } else {
+        localStorage.removeItem('access-token'); // লগআউট হলে মুছে দাও
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe(); // ক্লিনআপ
+  }, []);
+
+  const authInfo = { user, loading, register, login, googleLogin, logout, updateUserProfile };
+  return <AuthContext.Provider value={authInfo}>{children}</AuthContext.Provider>;
+};
+export default AuthProvider;
+</script>
+<script type="text/plain" data-f="src/hooks/useAuth.js">
+import { useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
+// Custom hook: যেকোনো কম্পোনেন্টে useAuth() দিয়ে ইউজার পাওয়া যাবে
+const useAuth = () => useContext(AuthContext);
+export default useAuth;
+</script>
+<script type="text/plain" data-f="src/pages/Login.jsx">
+import { useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import useAuth from '../hooks/useAuth';
+
+const Login = () => {
+  const { login, googleLogin } = useAuth();
+  const navigate = useNavigate();
+  const from = useLocation().state?.from?.pathname || '/'; // লগইনের পর কোথায় যাবে
+  const [error, setError] = useState('');
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      await login(e.target.email.value, e.target.password.value);
+      navigate(from, { replace: true }); // সফল হলে রিডাইরেক্ট
+    } catch (err) { setError(err.message); } // ব্যর্থ হলে এরর দেখাও
+  };
+  const handleGoogle = async () => {
+    try { await googleLogin(); navigate(from, { replace: true }); }
+    catch (err) { setError(err.message); }
+  };
+
+  return (
+    <div className='min-h-screen flex items-center justify-center bg-base-200'>
+      <div className='card w-96 bg-base-100 shadow-xl'><div className='card-body'>
+        <h2 className='card-title text-2xl font-bold'>Login</h2>
+        {error && <p className='text-error text-sm'>{error}</p>}
+        <form onSubmit={handleLogin} className='space-y-3'>
+          <input name='email' type='email' placeholder='Email' className='input input-bordered w-full' required />
+          <input name='password' type='password' placeholder='Password' className='input input-bordered w-full' required />
+          <button className='btn btn-primary w-full'>Login</button>
+        </form>
+        <div className='divider'>OR</div>
+        <button onClick={handleGoogle} className='btn btn-outline w-full'>Google দিয়ে Login</button>
+        <p className='text-center text-sm'>Account নেই? <Link to='/register' className='link link-primary'>Register</Link></p>
+      </div></div>
+    </div>
+  );
+};
+export default Login;
+</script>
+<div class="box s">💡 JWT টোকেন <code>onAuthStateChanged</code> এর ভেতরে নেওয়া best practice — Firebase login এর পরপরই ইউজার নিশ্চিত থাকে।</div>
+</main><script src="app.js"></script></body></html>

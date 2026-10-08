@@ -1,0 +1,736 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ফুল প্রজেক্ট — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="project"><main>
+<h2>🚀 প্রজেক্ট: TaskFlow — ব্যক্তিগত টাস্ক ম্যানেজার</h2>
+<div class="box i"><b>প্রজেক্টটা কিসের ওপর?</b><br>TaskFlow হলো একটি ছোট কিন্তু সম্পূর্ণ MERN অ্যাপ, যেখানে প্রতিটি ইউজার Firebase দিয়ে রেজিস্টার/লগইন করে নিজের টাস্ক যোগ করে, শেষ হলে টিক দেয়, আর ডিলিট করে। টাস্কগুলো MongoDB তে জমা থাকে এবং JWT টোকেনের কারণে প্রতিজন শুধু নিজের টাস্কই দেখতে ও বদলাতে পারে।</div>
+<table><tr><th>ফিচার</th><th>কোথায় শিখবে</th></tr>
+<tr><td>Email/Google অথেনটিকেশন</td><td>Firebase, AuthContext, Login, Register</td></tr>
+<tr><td>সুরক্ষিত পেজ</td><td>PrivateRoute, Dashboard</td></tr>
+<tr><td>টোকেন-ভিত্তিক API</td><td>JWT, verifyToken, axiosSecure</td></tr>
+<tr><td>টাস্ক CRUD (যোগ/দেখা/টগল/ডিলিট)</td><td>task.routes → task.controller → MongoDB</td></tr>
+<tr><td>আলাদা ফাইলে ব্যাকেন্ড (ভার্শন ২)</td><td>config, models, controllers, routes, middlewares</td></tr></table>
+<div class="box s"><b>তথ্যের যাত্রা:</b> Register → Firebase অ্যাকাউন্ট + MongoDB users → Login → Firebase ইউজার → JWT আনা → Dashboard → <code>axiosSecure</code> + টোকেন → <code>/api/tasks</code> → verifyToken → controller → MongoDB → UI আপডেট</div>
+<div class="box w">⚠️ আগে <b>ব্যাকেন্ড</b> বানিয়ে চালাও, তারপর ফ্রন্টেন্ড — নইলে লগইনের পর JWT আনতে গিয়ে এরর আসবে। নিচে ফ্রন্টেন্ড আগে দেখানো হয়েছে পড়ার সুবিধায়; <b>করার ক্রম</b>: ব্যাকেন্ড (১-১০) → ফ্রন্টেন্ড (১-১৩)।</div>
+<h2>📦 ব্যাকেন্ড — task-api (ভার্শন ২)</h2>
+<script type="text/plain" data-f="ফাইল স্ট্রাকচার">
+task-api/
+├── index.js                      # সার্ভার চালু
+├── app.js                        # Express কনফিগ
+├── config/db.js                  # MongoDB কানেকশন
+├── routes/
+│   ├── auth.routes.js            # /api/auth
+│   ├── user.routes.js            # /api/users
+│   └── task.routes.js            # /api/tasks
+├── controllers/
+│   ├── auth.controller.js
+│   ├── user.controller.js
+│   └── task.controller.js
+├── models/
+│   ├── user.model.js
+│   └── task.model.js
+├── middlewares/verifyToken.js    # JWT যাচাই
+├── .env  .gitignore  vercel.json  package.json
+</script>
+<h3>কোনটা আগে, কোনটা পরে — এক নজরে</h3>
+<table><tr><th>ক্রম</th><th>ফাইল</th><th>কাজ</th></tr>
+<tr><td>1</td><td><code>package.json</code></td><td>প্যাকেজ তালিকা ও scripts। npm init -y ও npm install দিলে নিজে তৈরি হয়; এখানে শুধু দেখার জন্য।</td></tr>
+<tr><td>2</td><td><code>.env</code> , <code>.gitignore</code></td><td>সিক্রেট কী রাখে ও গিটে যাওয়া আটকায়।</td></tr>
+<tr><td>3</td><td><code>config/db.js</code></td><td>MongoDB তে কানেক্ট করে এবং getDB() দেয়।</td></tr>
+<tr><td>4</td><td><code>models/user.model.js</code> , <code>models/task.model.js</code></td><td>users ও tasks collection এর হেল্পার।</td></tr>
+<tr><td>5</td><td><code>middlewares/verifyToken.js</code></td><td>JWT যাচাই করে; ঠিক হলে req.decoded এ email রাখে।</td></tr>
+<tr><td>6</td><td><code>controllers/auth.controller.js</code> , <code>controllers/user.controller.js</code> , <code>controllers/task.controller.js</code></td><td>আসল লজিক: টোকেন তৈরি, ইউজার সেভ, টাস্কের CRUD।</td></tr>
+<tr><td>7</td><td><code>routes/auth.routes.js</code> , <code>routes/user.routes.js</code> , <code>routes/task.routes.js</code></td><td>URL কে controller এর সাথে জোড়ে (task রুট verifyToken দিয়ে সুরক্ষিত)।</td></tr>
+<tr><td>8</td><td><code>app.js</code></td><td>Express কনফিগ: CORS, JSON, সব রুট যুক্ত করা, ৪০৪/৫০০ হ্যান্ডলার।</td></tr>
+<tr><td>9</td><td><code>index.js</code></td><td>env লোড, DB কানেক্ট, তারপর সার্ভার চালু।</td></tr>
+<tr><td>10</td><td><code>vercel.json</code></td><td>Vercel এ ডেপ্লয়ের কনফিগ (JSON, তাই কমেন্ট নেই)।</td></tr>
+</table>
+<h3>ধাপ 1: package.json</h3>
+<div class="box i"><b>কাজ:</b> প্যাকেজ তালিকা ও scripts। npm init -y ও npm install দিলে নিজে তৈরি হয়; এখানে শুধু দেখার জন্য।<br><b>ক্রম কেন:</b> প্রথমে — প্রজেক্ট ও প্যাকেজ ছাড়া কিছুই চলবে না।</div>
+<script type="text/plain" data-f="package.json (JSON এ কমেন্ট চলে না)">
+{
+  "name": "task-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.5.0"
+  },
+  "devDependencies": { "nodemon": "^3.1.0" }
+}
+</script>
+<h3>ধাপ 2: env ও gitignore</h3>
+<div class="box i"><b>কাজ:</b> সিক্রেট কী রাখে ও গিটে যাওয়া আটকায়।<br><b>ক্রম কেন:</b> আগে — config/db.js ও verifyToken এগুলো পড়ে।</div>
+<script type="text/plain" data-f=".env">
+# সার্ভারের পোর্ট
+PORT=5000
+# MongoDB Atlas এর ইউজার ও পাসওয়ার্ড
+DB_USER=your_mongodb_username
+DB_PASS=your_mongodb_password
+# JWT সাইন করার গোপন কী (কখনো শেয়ার করবে না)
+JWT_SECRET=your_super_secret_key_here
+</script>
+<script type="text/plain" data-f=".gitignore">
+# প্যাকেজ ফোল্ডার — npm install এ আবার তৈরি হয়
+node_modules
+# সিক্রেট কী — কখনো GitHub এ যাবে না
+.env
+</script>
+<h3>ধাপ 3: config/db.js</h3>
+<div class="box i"><b>কাজ:</b> MongoDB তে কানেক্ট করে এবং getDB() দেয়।<br><b>ক্রম কেন:</b> models এর আগে — models এটা ব্যবহার করে।</div>
+<script type="text/plain" data-f="config/db.js">
+const { MongoClient, ServerApiVersion } = require('mongodb');
+
+// .env এর ইউজার ও পাসওয়ার্ড দিয়ে কানেকশন স্ট্রিং
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.xxxx.mongodb.net/`;
+const client = new MongoClient(uri, {
+  serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true },
+});
+
+let connected = false; // বারবার কানেক্ট এড়াতে
+
+// ডাটাবেজে কানেক্ট করার ফাংশন
+const connectDB = async () => {
+  if (!connected) {
+    await client.connect();
+    connected = true;
+    console.log('MongoDB Connected');
+  }
+};
+
+// ডাটাবেজ অবজেক্ট ফেরত দেয় (models এ ব্যবহার হয়)
+const getDB = () => client.db('taskDB');
+
+module.exports = { connectDB, getDB };
+</script>
+<h3>ধাপ 4: models/</h3>
+<div class="box i"><b>কাজ:</b> users ও tasks collection এর হেল্পার।<br><b>ক্রম কেন:</b> db.js এর পরে, controllers এর আগে।</div>
+<script type="text/plain" data-f="models/user.model.js">
+const { getDB } = require('../config/db');
+// users collection ফেরত দেয়
+module.exports = () => getDB().collection('users');
+</script>
+<script type="text/plain" data-f="models/task.model.js">
+const { getDB } = require('../config/db');
+// tasks collection ফেরত দেয় — controller এ Tasks().find() ভাবে ব্যবহার হবে
+module.exports = () => getDB().collection('tasks');
+</script>
+<h3>ধাপ 5: middlewares/verifyToken.js</h3>
+<div class="box i"><b>কাজ:</b> JWT যাচাই করে; ঠিক হলে req.decoded এ email রাখে।<br><b>ক্রম কেন:</b> routes এর আগে — task.routes এটা ব্যবহার করে।</div>
+<script type="text/plain" data-f="middlewares/verifyToken.js">
+const jwt = require('jsonwebtoken');
+
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization; // "Bearer xxxxx"
+  // হেডার না থাকলে ৪০১
+  if (!authHeader) return res.status(401).send({ message: 'Unauthorized access' });
+  const token = authHeader.split(' ')[1]; // শুধু টোকেন অংশ
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    // টোকেন ভুল বা মেয়াদ শেষ হলে ৪০৩
+    if (err) return res.status(403).send({ message: 'Forbidden access' });
+    req.decoded = decoded; // ইউজারের email পরের ফাংশনে পাওয়া যাবে
+    next(); // পরের ধাপে যাও
+  });
+};
+module.exports = verifyToken;
+</script>
+<h3>ধাপ 6: controllers/</h3>
+<div class="box i"><b>কাজ:</b> আসল লজিক: টোকেন তৈরি, ইউজার সেভ, টাস্কের CRUD।<br><b>ক্রম কেন:</b> models ও middleware এর পরে, routes এর আগে।</div>
+<script type="text/plain" data-f="controllers/auth.controller.js">
+const jwt = require('jsonwebtoken');
+
+// POST /api/auth/jwt — { email } নিয়ে টোকেন বানায়
+exports.createToken = (req, res) => {
+  const token = jwt.sign({ email: req.body.email }, process.env.JWT_SECRET, { expiresIn: '1h' }); // ১ ঘণ্টা মেয়াদ
+  res.send({ token });
+};
+</script>
+<script type="text/plain" data-f="controllers/user.controller.js">
+const Users = require('../models/user.model');
+
+// POST /api/users — নতুন ইউজার সেভ (ডুপ্লিকেট এড়িয়ে)
+exports.saveUser = async (req, res) => {
+  const exists = await Users().findOne({ email: req.body.email });
+  if (exists) return res.send({ message: 'User already exists', insertedId: null });
+  res.send(await Users().insertOne(req.body));
+};
+</script>
+<script type="text/plain" data-f="controllers/task.controller.js">
+const { ObjectId } = require('mongodb');
+const Tasks = require('../models/task.model');
+
+// GET /api/tasks — শুধু নিজের টাস্ক
+exports.getTasks = async (req, res) => {
+  const list = await Tasks().find({ owner: req.decoded.email }).toArray(); // decoded থেকে email
+  res.send(list);
+};
+
+// POST /api/tasks — নতুন টাস্ক
+exports.addTask = async (req, res) => {
+  const task = { title: req.body.title, done: false, owner: req.decoded.email, createdAt: new Date() };
+  res.send(await Tasks().insertOne(task));
+};
+
+// PATCH /api/tasks/:id — শেষ/অশেষ টগল
+exports.toggleTask = async (req, res) => {
+  const filter = { _id: new ObjectId(req.params.id), owner: req.decoded.email }; // মালিক চেক
+  res.send(await Tasks().updateOne(filter, { $set: { done: req.body.done } }));
+};
+
+// DELETE /api/tasks/:id — ডিলিট
+exports.deleteTask = async (req, res) => {
+  res.send(await Tasks().deleteOne({ _id: new ObjectId(req.params.id), owner: req.decoded.email }));
+};
+</script>
+<h3>ধাপ 7: routes/</h3>
+<div class="box i"><b>কাজ:</b> URL কে controller এর সাথে জোড়ে (task রুট verifyToken দিয়ে সুরক্ষিত)।<br><b>ক্রম কেন:</b> controllers তৈরির পরে।</div>
+<script type="text/plain" data-f="routes/auth.routes.js">
+const router = require('express').Router();
+const { createToken } = require('../controllers/auth.controller');
+router.post('/jwt', createToken); // POST /api/auth/jwt
+module.exports = router;
+</script>
+<script type="text/plain" data-f="routes/user.routes.js">
+const router = require('express').Router();
+const { saveUser } = require('../controllers/user.controller');
+router.post('/', saveUser); // POST /api/users
+module.exports = router;
+</script>
+<script type="text/plain" data-f="routes/task.routes.js">
+const router = require('express').Router();
+const verifyToken = require('../middlewares/verifyToken');
+const { getTasks, addTask, toggleTask, deleteTask } = require('../controllers/task.controller');
+
+router.use(verifyToken); // নিচের সব রুট প্রোটেক্টেড
+
+router.get('/', getTasks);          // GET    /api/tasks
+router.post('/', addTask);          // POST   /api/tasks
+router.patch('/:id', toggleTask);   // PATCH  /api/tasks/:id
+router.delete('/:id', deleteTask);  // DELETE /api/tasks/:id
+module.exports = router;
+</script>
+<h3>ধাপ 8: app.js</h3>
+<div class="box i"><b>কাজ:</b> Express কনফিগ: CORS, JSON, সব রুট যুক্ত করা, ৪০৪/৫০০ হ্যান্ডলার।<br><b>ক্রম কেন:</b> routes এর পরে।</div>
+<script type="text/plain" data-f="app.js">
+const express = require('express');
+const cors = require('cors');
+
+const app = express();
+
+// কোন কোন frontend থেকে রিকোয়েস্ট আসতে পারবে (CORS)
+app.use(cors({
+  origin: ['http://localhost:5173', 'https://your-project.web.app', 'https://your-frontend.vercel.app'],
+  credentials: true,
+}));
+app.use(express.json()); // JSON বডি পড়ার জন্য
+
+// রুট যুক্ত করা — প্রতিটি রুট ফাইলের একটি prefix আছে
+app.use('/api/auth', require('./routes/auth.routes'));
+app.use('/api/users', require('./routes/user.routes'));
+app.use('/api/tasks', require('./routes/task.routes'));
+
+app.get('/', (req, res) => res.send('Task API running!')); // সার্ভার ঠিক আছে কিনা চেক
+
+// অজানা পথের জন্য ৪০৪
+app.use((req, res) => res.status(404).send({ message: 'Route not found' }));
+// ভেতরের এরর ধরার জন্য
+app.use((err, req, res, next) => res.status(500).send({ message: err.message }));
+
+module.exports = app;
+</script>
+<h3>ধাপ 9: index.js</h3>
+<div class="box i"><b>কাজ:</b> env লোড, DB কানেক্ট, তারপর সার্ভার চালু।<br><b>ক্রম কেন:</b> app.js এর পরে — শেষ কোড ফাইল।</div>
+<script type="text/plain" data-f="index.js">
+require('dotenv').config(); // সবার আগে .env লোড
+const app = require('./app');
+const { connectDB } = require('./config/db');
+
+const port = process.env.PORT || 5000;
+
+// আগে ডাটাবেজ কানেক্ট, তারপর সার্ভার চালু
+connectDB()
+  .then(() => app.listen(port, () => console.log(`Server running on port ${port}`)))
+  .catch(console.dir);
+</script>
+<h3>ধাপ 10: vercel.json</h3>
+<div class="box i"><b>কাজ:</b> Vercel এ ডেপ্লয়ের কনফিগ (JSON, তাই কমেন্ট নেই)।<br><b>ক্রম কেন:</b> ডেপ্লয়ের আগে।</div>
+<script type="text/plain" data-f="vercel.json">
+{
+  "version": 2,
+  "builds": [{ "src": "index.js", "use": "@vercel/node" }],
+  "routes": [{ "src": "/(.*)", "dest": "index.js" }]
+}
+</script>
+<h2>🎨 ফ্রন্টেন্ড — my-project</h2>
+<script type="text/plain" data-f="ফাইল স্ট্রাকচার">
+my-project/
+├── public/            # favicon ইত্যাদি
+├── src/
+│   ├── assets/        # ছবি, ফন্ট, আইকন
+│   ├── components/    # Navbar, Footer, Loader (রিইউজেবল)
+│   ├── pages/         # Home, Login, Register, Dashboard
+│   ├── routes/        # Router.jsx, PrivateRoute.jsx
+│   ├── context/       # AuthContext.jsx
+│   ├── hooks/         # useAuth.js
+│   ├── utils/         # axiosSecure.js
+│   ├── firebase/      # firebase.config.js
+│   ├── App.jsx
+│   └── main.jsx
+├── .env.local         # সিক্রেট কী (গিটে দিও না)
+└── tailwind.config.js
+</script>
+<h3>কোনটা আগে, কোনটা পরে — এক নজরে</h3>
+<table><tr><th>ক্রম</th><th>ফাইল</th><th>কাজ</th></tr>
+<tr><td>1</td><td><code>tailwind.config.js</code> , <code>src/index.css</code></td><td>Tailwind + DaisyUI চালু করে, যাতে btn, card, input ক্লাস কাজ করে।</td></tr>
+<tr><td>2</td><td><code>.env.local</code></td><td>Firebase এর কী ও ব্যাকেন্ডের URL রাখে। গিটে যাবে না।</td></tr>
+<tr><td>3</td><td><code>src/firebase/firebase.config.js</code></td><td>Firebase চালু করে auth অবজেক্ট এক্সপোর্ট করে।</td></tr>
+<tr><td>4</td><td><code>src/context/AuthContext.jsx</code></td><td>লগইন/রেজিস্টার/লগআউট ও বর্তমান ইউজার পুরো অ্যাপে দেয়; লগইনের পর ব্যাকেন্ড থেকে JWT আনে।</td></tr>
+<tr><td>5</td><td><code>src/hooks/useAuth.js</code></td><td>AuthContext সহজে ব্যবহারের ছোট হুক।</td></tr>
+<tr><td>6</td><td><code>src/utils/axiosSecure.js</code></td><td>প্রতি API রিকোয়েস্টে টোকেন জুড়ে দেয়; ৪০১/৪০৩ এ লগইনে পাঠায়।</td></tr>
+<tr><td>7</td><td><code>public/</code></td><td>public/ — favicon; assets/ — ছবি, ফন্ট, আইকন।</td></tr>
+<tr><td>8</td><td><code>src/components/Loader.jsx</code> , <code>src/components/Navbar.jsx</code> , <code>src/components/Footer.jsx</code></td><td>Loader — স্পিনার; Navbar — মেনু (লগইন অনুযায়ী বদলায়); Footer — নিচের অংশ।</td></tr>
+<tr><td>9</td><td><code>src/routes/PrivateRoute.jsx</code></td><td>লগইন ছাড়া প্রোটেক্টেড পেজে ঢুকতে দেয় না, /login এ পাঠায়।</td></tr>
+<tr><td>10</td><td><code>src/pages/Home.jsx</code> , <code>src/pages/Login.jsx</code> , <code>src/pages/Register.jsx</code> , <code>src/pages/Dashboard.jsx</code></td><td>Home — স্বাগতম; Login/Register — অথ ফর্ম; Dashboard — টাস্ক যোগ/টগল/ডিলিট (Task API কল)।</td></tr>
+<tr><td>11</td><td><code>src/App.jsx</code></td><td>সব পেজের কাঠামো: Navbar + Outlet + Footer।</td></tr>
+<tr><td>12</td><td><code>src/routes/Router.jsx</code></td><td>কোন URL এ কোন পেজ দেখাবে তা ঠিক করে।</td></tr>
+<tr><td>13</td><td><code>src/main.jsx</code></td><td>অ্যাপের প্রবেশদ্বার — AuthProvider ও Router চালু করে।</td></tr>
+</table>
+<h3>ধাপ 1: Tailwind ও DaisyUI</h3>
+<div class="box i"><b>কাজ:</b> Tailwind + DaisyUI চালু করে, যাতে btn, card, input ক্লাস কাজ করে।<br><b>ক্রম কেন:</b> সবার আগে — নইলে কোনো পেজেই স্টাইল আসবে না।</div>
+<script type="text/plain" data-f="tailwind.config.js">
+/** @type {import('tailwindcss').Config} */
+export default {
+  // কোন কোন ফাইলে Tailwind ক্লাস খুঁজবে
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  theme: { extend: {} },
+  // DaisyUI প্লাগইন যুক্ত করা
+  plugins: [require('daisyui')],
+  daisyui: { themes: ['light', 'dark', 'cupcake', 'cyberpunk'] }, // থিম লিস্ট
+};
+</script>
+<script type="text/plain" data-f="src/index.css">
+/* Tailwind এর তিনটি লেয়ার ইমপোর্ট */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+</script>
+<h3>ধাপ 2: সিক্রেট কী</h3>
+<div class="box i"><b>কাজ:</b> Firebase এর কী ও ব্যাকেন্ডের URL রাখে। গিটে যাবে না।<br><b>ক্রম কেন:</b> আগে — কারণ firebase.config ও axiosSecure এটা থেকে পড়ে।</div>
+<script type="text/plain" data-f=".env.local">
+# Firebase Console → Project Settings থেকে এই মানগুলো নাও
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:abcdef
+# ব্যাকেন্ডের ঠিকানা (ডেপ্লয়ের পর Vercel URL দেবে)
+VITE_API_URL=http://localhost:5000
+</script>
+<h3>ধাপ 3: Firebase কনফিগ</h3>
+<div class="box i"><b>কাজ:</b> Firebase চালু করে auth অবজেক্ট এক্সপোর্ট করে।<br><b>ক্রম কেন:</b> env এর পরে — AuthContext এটা import করবে।</div>
+<script type="text/plain" data-f="src/firebase/firebase.config.js">
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+// কী গুলো .env.local থেকে আসে (VITE_ prefix বাধ্যতামূলক)
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+};
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app); // অথ অবজেক্ট এক্সপোর্ট
+export default app;
+</script>
+<h3>ধাপ 4: AuthContext</h3>
+<div class="box i"><b>কাজ:</b> লগইন/রেজিস্টার/লগআউট ও বর্তমান ইউজার পুরো অ্যাপে দেয়; লগইনের পর ব্যাকেন্ড থেকে JWT আনে।<br><b>ক্রম কেন:</b> Firebase কনফিগের পরে; বাকি প্রায় সব ফাইল এর ওপর নির্ভর করে।</div>
+<script type="text/plain" data-f="src/context/AuthContext.jsx">
+import { createContext, useEffect, useState } from 'react';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut,
+  onAuthStateChanged, GoogleAuthProvider, signInWithPopup, updateProfile } from 'firebase/auth';
+import { auth } from '../firebase/firebase.config';
+import axios from 'axios';
+
+export const AuthContext = createContext(null);
+const googleProvider = new GoogleAuthProvider();
+
+const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const register = (email, password) => { setLoading(true); return createUserWithEmailAndPassword(auth, email, password); }; // Email Register
+  const login = (email, password) => { setLoading(true); return signInWithEmailAndPassword(auth, email, password); };       // Email Login
+  const googleLogin = () => { setLoading(true); return signInWithPopup(auth, googleProvider); };                           // Google Login
+  const logout = async () => { localStorage.removeItem('access-token'); return signOut(auth); };                         // Logout
+  const updateUserProfile = (name, photo) => updateProfile(auth.currentUser, { displayName: name, photoURL: photo });     // প্রোফাইল আপডেট
+
+  // Auth অবস্থা পরিবর্তন হলে চলে + JWT টোকেন নেওয়া
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser?.email) {
+        // ব্যাকেন্ড থেকে JWT নিয়ে localStorage এ রাখো
+        const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/jwt`, { email: currentUser.email });
+        localStorage.setItem('access-token', res.data.token);
+      } else {
+        localStorage.removeItem('access-token'); // লগআউট হলে মুছে দাও
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe(); // ক্লিনআপ
+  }, []);
+
+  const authInfo = { user, loading, register, login, googleLogin, logout, updateUserProfile };
+  return <AuthContext.Provider value={authInfo}>{children}</AuthContext.Provider>;
+};
+export default AuthProvider;
+</script>
+<h3>ধাপ 5: useAuth হুক</h3>
+<div class="box i"><b>কাজ:</b> AuthContext সহজে ব্যবহারের ছোট হুক।<br><b>ক্রম কেন:</b> Context এর পরে — পেজ ও কম্পোনেন্ট এটাই ব্যবহার করবে।</div>
+<script type="text/plain" data-f="src/hooks/useAuth.js">
+import { useContext } from 'react';
+import { AuthContext } from '../context/AuthContext';
+// Custom hook: যেকোনো কম্পোনেন্টে useAuth() দিয়ে ইউজার পাওয়া যাবে
+const useAuth = () => useContext(AuthContext);
+export default useAuth;
+</script>
+<h3>ধাপ 6: axiosSecure</h3>
+<div class="box i"><b>কাজ:</b> প্রতি API রিকোয়েস্টে টোকেন জুড়ে দেয়; ৪০১/৪০৩ এ লগইনে পাঠায়।<br><b>ক্রম কেন:</b> পেজ বানানোর আগে — Dashboard এটা দিয়ে ব্যাকেন্ডে কথা বলে।</div>
+<script type="text/plain" data-f="src/utils/axiosSecure.js">
+import axios from 'axios';
+// বেস URL সেট করা
+const axiosSecure = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000' });
+
+// Request interceptor — প্রতি রিকোয়েস্টে টোকেন জুড়ে দেয়
+axiosSecure.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access-token');
+  if (token) config.headers.authorization = `Bearer ${token}`;
+  return config;
+});
+
+// Response interceptor — 401/403 হলে লগআউট
+axiosSecure.interceptors.response.use((res) => res, (error) => {
+  if (error.response?.status === 401 || error.response?.status === 403) {
+    localStorage.removeItem('access-token');
+    window.location.href = '/login';
+  }
+  return Promise.reject(error);
+});
+export default axiosSecure;
+</script>
+<h3>ধাপ 7: public ও assets</h3>
+<div class="box i"><b>কাজ:</b> public/ — favicon; assets/ — ছবি, ফন্ট, আইকন।<br><b>ক্রম কেন:</b> যেকোনো সময়; ছবি লাগলে তখনই।</div>
+<script type="text/plain" data-f="public/ ও src/assets/ (উদাহরণ)">
+<!-- public/favicon.ico — index.html এ ট্যাব আইকন হিসেবে বসে -->
+<link rel="icon" href="/favicon.ico" />
+
+// src/assets/ এর ছবি কম্পোনেন্টে এভাবে ব্যবহার করো
+import logo from '../assets/logo.png';
+<img src={logo} alt='TaskFlow' className='w-10' />
+</script>
+<h3>ধাপ 8: রিইউজেবল কম্পোনেন্ট</h3>
+<div class="box i"><b>কাজ:</b> Loader — স্পিনার; Navbar — মেনু (লগইন অনুযায়ী বদলায়); Footer — নিচের অংশ।<br><b>ক্রম কেন:</b> PrivateRoute ও App এর আগে — কারণ ওরা এগুলো import করে।</div>
+<script type="text/plain" data-f="src/components/Loader.jsx">
+// অথ/ডাটা লোড হওয়ার সময় স্পিনার দেখায়
+const Loader = () => (
+  <div className='flex justify-center items-center min-h-screen'>
+    <span className='loading loading-spinner loading-lg text-primary'></span>
+  </div>
+);
+export default Loader;
+</script>
+<script type="text/plain" data-f="src/components/Navbar.jsx">
+import { Link, NavLink } from 'react-router-dom';
+import useAuth from '../hooks/useAuth';
+
+const Navbar = () => {
+  const { user, logout } = useAuth(); // লগইন ইউজার ও logout ফাংশন
+  return (
+    <div className='navbar bg-base-200 px-6'>
+      <Link to='/' className='btn btn-ghost text-xl flex-1'>TaskFlow</Link>
+      <NavLink to='/' className='btn btn-sm btn-ghost'>Home</NavLink>
+      {user ? (
+        <>
+          {/* লগইন থাকলে Dashboard ও Logout */}
+          <NavLink to='/dashboard' className='btn btn-sm btn-ghost'>Dashboard</NavLink>
+          <button onClick={logout} className='btn btn-sm btn-error ml-2'>Logout</button>
+        </>
+      ) : (
+        <>
+          {/* লগইন না থাকলে Login ও Register */}
+          <NavLink to='/login' className='btn btn-sm btn-primary ml-2'>Login</NavLink>
+          <NavLink to='/register' className='btn btn-sm btn-outline ml-2'>Register</NavLink>
+        </>
+      )}
+    </div>
+  );
+};
+export default Navbar;
+</script>
+<script type="text/plain" data-f="src/components/Footer.jsx">
+// সব পেজের নিচে একই ফুটার
+const Footer = () => (
+  <footer className='footer footer-center p-4 bg-base-200 text-sm'>
+    <p>© 2025 TaskFlow — MERN Stack প্রজেক্ট</p>
+  </footer>
+);
+export default Footer;
+</script>
+<h3>ধাপ 9: PrivateRoute</h3>
+<div class="box i"><b>কাজ:</b> লগইন ছাড়া প্রোটেক্টেড পেজে ঢুকতে দেয় না, /login এ পাঠায়।<br><b>ক্রম কেন:</b> useAuth ও Loader তৈরির পরে, Router এর আগে।</div>
+<script type="text/plain" data-f="src/routes/PrivateRoute.jsx">
+import { Navigate, useLocation } from 'react-router-dom';
+import useAuth from '../hooks/useAuth';
+import Loader from '../components/Loader';
+
+const PrivateRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <Loader />; // Firebase চেক শেষ না হওয়া পর্যন্ত অপেক্ষা
+  // লগইন না থাকলে /login এ পাঠাও, আগের লোকেশন মনে রাখো
+  if (!user) return <Navigate to='/login' state={{ from: location }} replace />;
+  return children; // লগইন থাকলে পেজ দেখাও
+};
+export default PrivateRoute;
+</script>
+<h3>ধাপ 10: পেজগুলো</h3>
+<div class="box i"><b>কাজ:</b> Home — স্বাগতম; Login/Register — অথ ফর্ম; Dashboard — টাস্ক যোগ/টগল/ডিলিট (Task API কল)।<br><b>ক্রম কেন:</b> হুক ও axiosSecure এর পরে। ব্যাকেন্ড চালু থাকলে Dashboard টেস্ট করা যাবে।</div>
+<script type="text/plain" data-f="src/pages/Home.jsx">
+import { Link } from 'react-router-dom';
+import useAuth from '../hooks/useAuth';
+
+const Home = () => {
+  const { user } = useAuth();
+  return (
+    <div className='hero min-h-[70vh]'>
+      <div className='text-center'>
+        <h1 className='text-5xl font-bold'>TaskFlow</h1>
+        <p className='py-6'>তোমার দৈনিক কাজ সাজাও — নিরাপদে, নিজের অ্যাকাউন্টে।</p>
+        {/* লগইন থাকলে Dashboard এ, নইলে Login এ পাঠাও */}
+        <Link to={user ? '/dashboard' : '/login'} className='btn btn-primary'>শুরু করো</Link>
+      </div>
+    </div>
+  );
+};
+export default Home;
+</script>
+<script type="text/plain" data-f="src/pages/Login.jsx">
+import { useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import useAuth from '../hooks/useAuth';
+
+const Login = () => {
+  const { login, googleLogin } = useAuth();
+  const navigate = useNavigate();
+  const from = useLocation().state?.from?.pathname || '/'; // লগইনের পর কোথায় যাবে
+  const [error, setError] = useState('');
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      await login(e.target.email.value, e.target.password.value);
+      navigate(from, { replace: true }); // সফল হলে রিডাইরেক্ট
+    } catch (err) { setError(err.message); } // ব্যর্থ হলে এরর দেখাও
+  };
+  const handleGoogle = async () => {
+    try { await googleLogin(); navigate(from, { replace: true }); }
+    catch (err) { setError(err.message); }
+  };
+
+  return (
+    <div className='min-h-screen flex items-center justify-center bg-base-200'>
+      <div className='card w-96 bg-base-100 shadow-xl'><div className='card-body'>
+        <h2 className='card-title text-2xl font-bold'>Login</h2>
+        {error && <p className='text-error text-sm'>{error}</p>}
+        <form onSubmit={handleLogin} className='space-y-3'>
+          <input name='email' type='email' placeholder='Email' className='input input-bordered w-full' required />
+          <input name='password' type='password' placeholder='Password' className='input input-bordered w-full' required />
+          <button className='btn btn-primary w-full'>Login</button>
+        </form>
+        <div className='divider'>OR</div>
+        <button onClick={handleGoogle} className='btn btn-outline w-full'>Google দিয়ে Login</button>
+        <p className='text-center text-sm'>Account নেই? <Link to='/register' className='link link-primary'>Register</Link></p>
+      </div></div>
+    </div>
+  );
+};
+export default Login;
+</script>
+<script type="text/plain" data-f="src/pages/Register.jsx">
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import useAuth from '../hooks/useAuth';
+
+const Register = () => {
+  const { register, updateUserProfile } = useAuth();
+  const navigate = useNavigate();
+  const [error, setError] = useState('');
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setError('');
+    const f = e.target.elements; // ফর্মের ইনপুটগুলো
+    try {
+      await register(f.email.value, f.password.value);        // ১. Firebase এ অ্যাকাউন্ট
+      await updateUserProfile(f.fullName.value, null);          // ২. নাম সেভ
+      // ৩. আমাদের MongoDB তেও ইউজার সেভ (এখনো টোকেন নেই, তাই সাধারণ axios)
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/users`, { name: f.fullName.value, email: f.email.value });
+      navigate('/dashboard', { replace: true }); // ৪. Dashboard এ যাও
+    } catch (err) { setError(err.message); }
+  };
+
+  return (
+    <div className='flex justify-center p-10'>
+      <div className='card w-96 bg-base-100 shadow-xl'><div className='card-body'>
+        <h2 className='card-title'>Register</h2>
+        {error && <p className='text-error text-sm'>{error}</p>}
+        <form onSubmit={handleRegister} className='space-y-3'>
+          <input name='fullName' placeholder='নাম' className='input input-bordered w-full' required />
+          <input name='email' type='email' placeholder='Email' className='input input-bordered w-full' required />
+          <input name='password' type='password' placeholder='Password (কমপক্ষে ৬ অক্ষর)' className='input input-bordered w-full' required />
+          <button className='btn btn-primary w-full'>Register</button>
+        </form>
+        <p className='text-sm text-center'>অ্যাকাউন্ট আছে? <Link to='/login' className='link link-primary'>Login</Link></p>
+      </div></div>
+    </div>
+  );
+};
+export default Register;
+</script>
+<script type="text/plain" data-f="src/pages/Dashboard.jsx">
+import { useEffect, useState } from 'react';
+import axiosSecure from '../utils/axiosSecure'; // টোকেন সহ axios
+import useAuth from '../hooks/useAuth';
+
+export default function Dashboard() {
+  const { user } = useAuth(); // নাম দেখানোর জন্য
+  const [tasks, setTasks] = useState([]); // টাস্ক লিস্ট
+
+  // GET /api/tasks — ব্যাকেন্ড থেকে টাস্ক আনা
+  const load = async () => {
+    const res = await axiosSecure.get('/api/tasks');
+    setTasks(res.data); // state বদলালে UI আপডেট হয়
+  };
+  useEffect(() => { load(); }, []); // পেজ খুললে একবার
+
+  // POST /api/tasks — নতুন টাস্ক
+  const add = async (e) => {
+    e.preventDefault();
+    await axiosSecure.post('/api/tasks', { title: e.target.title.value });
+    e.target.reset();
+    load(); // তালিকা আবার আনো
+  };
+
+  // PATCH /api/tasks/:id — শেষ/অশেষ
+  const toggle = async (t) => {
+    await axiosSecure.patch(`/api/tasks/${t._id}`, { done: !t.done });
+    load();
+  };
+
+  // DELETE /api/tasks/:id — ডিলিট
+  const remove = async (id) => {
+    await axiosSecure.delete(`/api/tasks/${id}`);
+    load();
+  };
+
+  return (
+    <div className='max-w-xl mx-auto p-6'>
+      <h2 className='text-2xl font-bold mb-4'>স্বাগতম, {user?.displayName || user?.email}</h2>
+      <form onSubmit={add} className='flex gap-2 mb-4'>
+        <input name='title' placeholder='নতুন টাস্ক' className='input input-bordered flex-1' required />
+        <button className='btn btn-primary'>যোগ</button>
+      </form>
+      {tasks.map((t) => (
+        <div key={t._id} className='flex items-center gap-3 py-2 border-b'>
+          <input type='checkbox' checked={t.done} onChange={() => toggle(t)} className='checkbox' />
+          <span className={`flex-1 ${t.done ? 'line-through' : ''}`}>{t.title}</span>
+          <button onClick={() => remove(t._id)} className='btn btn-xs btn-error'>ডিলিট</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+</script>
+<h3>ধাপ 11: App.jsx</h3>
+<div class="box i"><b>কাজ:</b> সব পেজের কাঠামো: Navbar + Outlet + Footer।<br><b>ক্রম কেন:</b> পেজ ও কম্পোনেন্ট তৈরির পরে।</div>
+<script type="text/plain" data-f="src/App.jsx">
+import { Outlet } from 'react-router-dom';
+import Navbar from './components/Navbar';
+import Footer from './components/Footer';
+
+// সব পেজের কাঠামো: Navbar + (পেজ) + Footer
+const App = () => (
+  <div className='min-h-screen flex flex-col'>
+    <Navbar />
+    <main className='flex-1'><Outlet /></main> {/* এখানে চাইল্ড রুটের পেজ বসে */}
+    <Footer />
+  </div>
+);
+export default App;
+</script>
+<h3>ধাপ 12: Router</h3>
+<div class="box i"><b>কাজ:</b> কোন URL এ কোন পেজ দেখাবে তা ঠিক করে।<br><b>ক্রম কেন:</b> সব পেজ ও PrivateRoute তৈরির পরে।</div>
+<script type="text/plain" data-f="src/routes/Router.jsx">
+import { createBrowserRouter } from 'react-router-dom';
+import App from '../App';
+import Home from '../pages/Home';
+import Login from '../pages/Login';
+import Register from '../pages/Register';
+import Dashboard from '../pages/Dashboard';
+import PrivateRoute from './PrivateRoute';
+
+// সব রুটের তালিকা — App হলো কাঠামো, children হলো পেজ
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <App />,
+    children: [
+      { path: '/', element: <Home /> },
+      { path: '/login', element: <Login /> },
+      { path: '/register', element: <Register /> },
+      // Dashboard শুধু লগইন ইউজারের জন্য
+      { path: '/dashboard', element: <PrivateRoute><Dashboard /></PrivateRoute> },
+    ],
+  },
+]);
+export default router;
+</script>
+<h3>ধাপ 13: main.jsx</h3>
+<div class="box i"><b>কাজ:</b> অ্যাপের প্রবেশদ্বার — AuthProvider ও Router চালু করে।<br><b>ক্রম কেন:</b> একদম শেষে — সবকিছু জোড়া লাগায়।</div>
+<script type="text/plain" data-f="src/main.jsx">
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { RouterProvider } from 'react-router-dom';
+import AuthProvider from './context/AuthContext';
+import router from './routes/Router';
+import './index.css';
+
+// AuthProvider দিয়ে পুরো অ্যাপে ইউজার তথ্য শেয়ার
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <AuthProvider><RouterProvider router={router} /></AuthProvider>
+  </React.StrictMode>
+);
+</script>
+<h2>চালানো ও টেস্টের ধাপ</h2>
+<script type="text/plain" data-f="Terminal">
+# টার্মিনাল ১ — ব্যাকেন্ড
+cd task-api && npm run dev       # → Server running on port 5000
+
+# টার্মিনাল ২ — ফ্রন্টেন্ড
+cd my-project && npm run dev     # → http://localhost:5173
+
+# ব্রাউজারে: Register → Dashboard → টাস্ক যোগ → টিক → ডিলিট
+# সমস্যা হলে F12 → Network ট্যাব দেখো (connect পেজের চেকলিস্ট)
+</script>
+<div class="box s">✅ চালু হলে <a href="deploy.html">ডেপ্লয় পেজ</a> দেখে Vercel/Firebase এ তুলে দাও, আর <code>VITE_API_URL</code> ও CORS origin বদলাতে ভুলো না।</div>
+</main><script src="app.js"></script></body></html>

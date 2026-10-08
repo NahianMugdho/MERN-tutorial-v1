@@ -1,0 +1,241 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ব্যাকেন্ড ভার্শন ২ — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="backend-v2"><main>
+<h2>⭐ ব্যাকেন্ড ভার্শন ২ — আলাদা আলাদা ফাইলে (Task API)</h2>
+<p>ভার্শন ১ এ সব কোড <code>index.js</code> এ ছিল। বড় প্রজেক্টে কোড ভাগ করে রাখা হয় — প্রতিটি ফাইলের একটাই দায়িত্ব। এখানে একটি সিম্পল <b>Task API</b> (লগইন ইউজার নিজের টাস্ক যোগ/দেখা/টগল/ডিলিট করবে) বানিয়ে পুরো কাঠামো শিখব।</p>
+<h3>কোন ফোল্ডারের কাজ কী?</h3>
+<table><tr><th>ফোল্ডার/ফাইল</th><th>দায়িত্ব</th></tr>
+<tr><td><code>index.js</code></td><td>Entry point — DB কানেক্ট করে সার্ভার চালু</td></tr>
+<tr><td><code>app.js</code></td><td>Express অ্যাপ, middleware ও রুট যুক্ত করা</td></tr>
+<tr><td><code>config/</code></td><td>MongoDB কানেকশন</td></tr>
+<tr><td><code>routes/</code></td><td>URL → কোন controller চলবে</td></tr>
+<tr><td><code>controllers/</code></td><td>আসল লজিক (DB তে কাজ, res পাঠানো)</td></tr>
+<tr><td><code>models/</code></td><td>Collection এর হেল্পার (ডাটা কাঠামো)</td></tr>
+<tr><td><code>middlewares/</code></td><td>verifyToken ইত্যাদি মাঝপথের চেক</td></tr></table>
+<div class="box i"><b>রিকোয়েস্টের পথ:</b> index.js → app.js → routes → middleware (verifyToken) → controller → model → MongoDB → response</div>
+<h2>ধাপ ১: ফোল্ডার ও প্যাকেজ</h2>
+<div class="term" data-tasks="mkdir task-api && cd task-api|npm init -y|npm install express cors dotenv jsonwebtoken mongodb|npm install -D nodemon|mkdir config routes controllers models middlewares|touch index.js app.js .env .gitignore vercel.json|touch config/db.js models/task.model.js middlewares/verifyToken.js|touch routes/task.routes.js controllers/task.controller.js|npm run dev"></div>
+<script type="text/plain" data-f="ফাইনাল স্ট্রাকচার">
+task-api/
+├── index.js                      # সার্ভার চালু
+├── app.js                        # Express কনফিগ
+├── config/db.js                  # MongoDB কানেকশন
+├── routes/
+│   ├── auth.routes.js            # /api/auth
+│   ├── user.routes.js            # /api/users
+│   └── task.routes.js            # /api/tasks
+├── controllers/
+│   ├── auth.controller.js
+│   ├── user.controller.js
+│   └── task.controller.js
+├── models/
+│   ├── user.model.js
+│   └── task.model.js
+├── middlewares/verifyToken.js    # JWT যাচাই
+├── .env  .gitignore  vercel.json  package.json
+</script>
+<script type="text/plain" data-f="package.json (scripts অংশ)">
+"scripts": {
+  "start": "node index.js",   // প্রোডাকশন
+  "dev": "nodemon index.js"   // ডেভেলপমেন্ট (অটো রিস্টার্ট)
+}
+</script>
+<script type="text/plain" data-f=".env">
+PORT=5000
+DB_USER=your_mongodb_username
+DB_PASS=your_mongodb_password
+JWT_SECRET=your_super_secret_key_here
+</script>
+<script type="text/plain" data-f=".gitignore">
+node_modules
+.env
+</script>
+<h2>ধাপ ২: config/db.js — ডাটাবেজ কানেকশন</h2>
+<script type="text/plain" data-f="config/db.js">
+const { MongoClient, ServerApiVersion } = require('mongodb');
+
+// .env এর ইউজার ও পাসওয়ার্ড দিয়ে কানেকশন স্ট্রিং
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.xxxx.mongodb.net/`;
+const client = new MongoClient(uri, {
+  serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true },
+});
+
+let connected = false; // বারবার কানেক্ট এড়াতে
+
+// ডাটাবেজে কানেক্ট করার ফাংশন
+const connectDB = async () => {
+  if (!connected) {
+    await client.connect();
+    connected = true;
+    console.log('MongoDB Connected');
+  }
+};
+
+// ডাটাবেজ অবজেক্ট ফেরত দেয় (models এ ব্যবহার হয়)
+const getDB = () => client.db('taskDB');
+
+module.exports = { connectDB, getDB };
+</script>
+<h2>ধাপ ৩: models/ — Collection হেল্পার</h2>
+<script type="text/plain" data-f="models/task.model.js">
+const { getDB } = require('../config/db');
+// tasks collection ফেরত দেয় — controller এ Tasks().find() ভাবে ব্যবহার হবে
+module.exports = () => getDB().collection('tasks');
+</script>
+<script type="text/plain" data-f="models/user.model.js">
+const { getDB } = require('../config/db');
+// users collection ফেরত দেয়
+module.exports = () => getDB().collection('users');
+</script>
+<h2>ধাপ ৪: middlewares/verifyToken.js</h2>
+<script type="text/plain" data-f="middlewares/verifyToken.js">
+const jwt = require('jsonwebtoken');
+
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization; // "Bearer xxxxx"
+  // হেডার না থাকলে ৪০১
+  if (!authHeader) return res.status(401).send({ message: 'Unauthorized access' });
+  const token = authHeader.split(' ')[1]; // শুধু টোকেন অংশ
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    // টোকেন ভুল বা মেয়াদ শেষ হলে ৪০৩
+    if (err) return res.status(403).send({ message: 'Forbidden access' });
+    req.decoded = decoded; // ইউজারের email পরের ফাংশনে পাওয়া যাবে
+    next(); // পরের ধাপে যাও
+  });
+};
+module.exports = verifyToken;
+</script>
+<h2>ধাপ ৫: controllers/ — আসল লজিক</h2>
+<script type="text/plain" data-f="controllers/auth.controller.js">
+const jwt = require('jsonwebtoken');
+
+// POST /api/auth/jwt — { email } নিয়ে টোকেন বানায়
+exports.createToken = (req, res) => {
+  const token = jwt.sign({ email: req.body.email }, process.env.JWT_SECRET, { expiresIn: '1h' }); // ১ ঘণ্টা মেয়াদ
+  res.send({ token });
+};
+</script>
+<script type="text/plain" data-f="controllers/user.controller.js">
+const Users = require('../models/user.model');
+
+// POST /api/users — নতুন ইউজার সেভ (ডুপ্লিকেট এড়িয়ে)
+exports.saveUser = async (req, res) => {
+  const exists = await Users().findOne({ email: req.body.email });
+  if (exists) return res.send({ message: 'User already exists', insertedId: null });
+  res.send(await Users().insertOne(req.body));
+};
+</script>
+<script type="text/plain" data-f="controllers/task.controller.js">
+const { ObjectId } = require('mongodb');
+const Tasks = require('../models/task.model');
+
+// GET /api/tasks — শুধু নিজের টাস্ক
+exports.getTasks = async (req, res) => {
+  const list = await Tasks().find({ owner: req.decoded.email }).toArray(); // decoded থেকে email
+  res.send(list);
+};
+
+// POST /api/tasks — নতুন টাস্ক
+exports.addTask = async (req, res) => {
+  const task = { title: req.body.title, done: false, owner: req.decoded.email, createdAt: new Date() };
+  res.send(await Tasks().insertOne(task));
+};
+
+// PATCH /api/tasks/:id — শেষ/অশেষ টগল
+exports.toggleTask = async (req, res) => {
+  const filter = { _id: new ObjectId(req.params.id), owner: req.decoded.email }; // মালিক চেক
+  res.send(await Tasks().updateOne(filter, { $set: { done: req.body.done } }));
+};
+
+// DELETE /api/tasks/:id — ডিলিট
+exports.deleteTask = async (req, res) => {
+  res.send(await Tasks().deleteOne({ _id: new ObjectId(req.params.id), owner: req.decoded.email }));
+};
+</script>
+<h2>ধাপ ৬: routes/ — URL ম্যাপিং</h2>
+<script type="text/plain" data-f="routes/auth.routes.js">
+const router = require('express').Router();
+const { createToken } = require('../controllers/auth.controller');
+router.post('/jwt', createToken); // POST /api/auth/jwt
+module.exports = router;
+</script>
+<script type="text/plain" data-f="routes/user.routes.js">
+const router = require('express').Router();
+const { saveUser } = require('../controllers/user.controller');
+router.post('/', saveUser); // POST /api/users
+module.exports = router;
+</script>
+<script type="text/plain" data-f="routes/task.routes.js">
+const router = require('express').Router();
+const verifyToken = require('../middlewares/verifyToken');
+const { getTasks, addTask, toggleTask, deleteTask } = require('../controllers/task.controller');
+
+router.use(verifyToken); // নিচের সব রুট প্রোটেক্টেড
+
+router.get('/', getTasks);          // GET    /api/tasks
+router.post('/', addTask);          // POST   /api/tasks
+router.patch('/:id', toggleTask);   // PATCH  /api/tasks/:id
+router.delete('/:id', deleteTask);  // DELETE /api/tasks/:id
+module.exports = router;
+</script>
+<h2>ধাপ ৭: app.js ও index.js</h2>
+<script type="text/plain" data-f="app.js">
+const express = require('express');
+const cors = require('cors');
+
+const app = express();
+
+// কোন কোন frontend থেকে রিকোয়েস্ট আসতে পারবে (CORS)
+app.use(cors({
+  origin: ['http://localhost:5173', 'https://your-project.web.app', 'https://your-frontend.vercel.app'],
+  credentials: true,
+}));
+app.use(express.json()); // JSON বডি পড়ার জন্য
+
+// রুট যুক্ত করা — প্রতিটি রুট ফাইলের একটি prefix আছে
+app.use('/api/auth', require('./routes/auth.routes'));
+app.use('/api/users', require('./routes/user.routes'));
+app.use('/api/tasks', require('./routes/task.routes'));
+
+app.get('/', (req, res) => res.send('Task API running!')); // সার্ভার ঠিক আছে কিনা চেক
+
+// অজানা পথের জন্য ৪০৪
+app.use((req, res) => res.status(404).send({ message: 'Route not found' }));
+// ভেতরের এরর ধরার জন্য
+app.use((err, req, res, next) => res.status(500).send({ message: err.message }));
+
+module.exports = app;
+</script>
+<script type="text/plain" data-f="index.js">
+require('dotenv').config(); // সবার আগে .env লোড
+const app = require('./app');
+const { connectDB } = require('./config/db');
+
+const port = process.env.PORT || 5000;
+
+// আগে ডাটাবেজ কানেক্ট, তারপর সার্ভার চালু
+connectDB()
+  .then(() => app.listen(port, () => console.log(`Server running on port ${port}`)))
+  .catch(console.dir);
+</script>
+<script type="text/plain" data-f="vercel.json">
+{
+  "version": 2,
+  "builds": [{ "src": "index.js", "use": "@vercel/node" }],
+  "routes": [{ "src": "/(.*)", "dest": "index.js" }]
+}
+</script>
+<h2>ধাপ ৮: টেস্ট করো (Postman/Thunder Client বা curl)</h2>
+<script type="text/plain" data-f="Terminal (সার্ভার চালু থাকা অবস্থায়)">
+npm run dev
+
+# ১. টোকেন নাও
+curl -X POST http://localhost:5000/api/auth/jwt -H "Content-Type: application/json" -d '{"email":"a@b.com"}'
+
+# ২. টোকেন ছাড়া → 401 আসবে
+curl http://localhost:5000/api/tasks
+
+# ৩. টোকেন সহ টাস্ক যোগ ও দেখা (<token> এর জায়গায় আসল টোকেন)
+curl -X POST http://localhost:5000/api/tasks -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"title":"MERN শেখা"}'
+curl http://localhost:5000/api/tasks -H "Authorization: Bearer <token>"
+</script>
+<div class="box s">✅ ব্যাকেন্ড রেডি! এবার <a href="connect.html"><b>ফ্রন্টেন্ড ↔ ব্যাকেন্ড সংযোগ</b></a> পেজে দেখো এই API কে React এর সাথে কীভাবে জোড়া লাগাবে।</div>
+</main><script src="app.js"></script></body></html>

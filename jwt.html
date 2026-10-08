@@ -1,0 +1,21 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JWT — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="jwt"><main>
+<h2>৬. JWT Token — কীভাবে কাজ করে</h2>
+<p>JWT (JSON Web Token) একটি compact, self-contained token যা ইউজারের identity প্রমাণ করে। এটি তিন অংশে বিভক্ত:</p>
+<table><tr><th>অংশ</th><th>কী থাকে</th><th>উদাহরণ</th></tr>
+<tr><td><b>Header</b></td><td>Algorithm ও Token type</td><td><code>{ alg: HS256, typ: JWT }</code></td></tr>
+<tr><td><b>Payload</b></td><td>User data (claims)</td><td><code>{ email, iat, exp }</code></td></tr>
+<tr><td><b>Signature</b></td><td>Verify করতে ব্যবহার হয়</td><td><code>HMACSHA256(header.payload, secret)</code></td></tr></table>
+<h3>JWT Flow — ধাপে ধাপে</h3>
+<div class="box i">১. User login করলে backend এর <code>/jwt</code> এ email যায়<br>২. Backend token sign করে পাঠায়<br>৩. Frontend <code>localStorage</code> এ সেভ করে<br>৪. Protected API call এ <code>Authorization: Bearer &lt;token&gt;</code> যায়<br>৫. <code>verifyToken</code> middleware verify করে<br>৬. Valid হলে data, নয়তো 401/403</div>
+<table><tr><th>স্ট্যাটাস</th><th>অর্থ</th></tr><tr><td>401</td><td>Token/Authorization header নেই</td></tr><tr><td>403</td><td>Token ভুল বা মেয়াদোত্তীর্ণ</td></tr></table>
+<script type="text/plain" data-f="Frontend থেকে Protected API Call">
+import axiosSecure from '../utils/axiosSecure';
+
+const fetchUsers = async () => {
+  // interceptor নিজেই header এ টোকেন বসিয়ে দেবে
+  const res = await axiosSecure.get('/api/users');
+  console.log(res.data); // ইউজারদের তালিকা
+};
+</script>
+<div class="box w">⚠️ JWT_SECRET কখনো frontend এ বা GitHub এ রাখবে না। শুধু backend এর env এ।</div>
+</main><script src="app.js"></script></body></html>

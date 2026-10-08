@@ -1,0 +1,95 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ফ্রন্টেন্ড ↔ ব্যাকেন্ড — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="connect"><main>
+<h2>🔌 ফ্রন্টেন্ড ও ব্যাকেন্ড কীভাবে সংযুক্ত হয়</h2>
+<p>ফ্রন্টেন্ড (React, ব্রাউজারে চলে) আর ব্যাকেন্ড (Express, সার্ভারে চলে) আলাদা প্রোগ্রাম। তারা কথা বলে <b>HTTP রিকোয়েস্ট</b> দিয়ে — React <code>axios</code> দিয়ে URL এ রিকোয়েস্ট পাঠায়, Express সেই URL ধরে উত্তর দেয়।</p>
+<div class="box i"><code>localhost:5173</code> (React) ⇄ <code>localhost:5000</code> (Express) ⇄ MongoDB Atlas</div>
+<h2>ইন্টারেক্টিভ: একটি রিকোয়েস্টের যাত্রা</h2>
+<div class="fl" id="fl"></div>
+<div class="box s" id="fx">▶ বাটনে ক্লিক করে ধাপগুলো দেখো</div>
+<button id="nx" style="background:#4F46E5;color:#fff;border:0;border-radius:6px;padding:8px 18px;cursor:pointer">পরের ধাপ ▶</button>
+<script>
+// প্রতিটি ধাপ: [নাম, ব্যাখ্যা]
+const S=[["React বাটন","ইউজার 'যোগ করো' চাপে → handler চলে"],["axiosSecure","interceptor হেডারে Authorization: Bearer টোকেন বসায়; baseURL = VITE_API_URL"],["CORS","ব্রাউজার জিজ্ঞেস করে; Express এর cors origin এ frontend URL থাকলে পাস"],["routes","/api/tasks পথ → task.routes.js এ মিলে"],["verifyToken","টোকেন যাচাই; ঠিক হলে req.decoded এ email"],["controller","addTask চলে, ডাটা তৈরি হয়"],["MongoDB","insertOne দিয়ে ডকুমেন্ট সেভ"],["Response","res.send(result) → JSON ফেরত"],["React state","setState/load() → UI নতুন করে আঁকে ✔"]];
+const fl=document.getElementById('fl');let k=-1;
+S.forEach((s,n)=>{fl.insertAdjacentHTML('beforeend',(n?'<span>→</span>':'')+`<div>${s[0]}</div>`)});
+document.getElementById('nx').onclick=()=>{ // পরের ধাপে হাইলাইট সরানো
+  const d=fl.querySelectorAll('div');if(k>=0)d[k].classList.remove('on');k=(k+1)%S.length;
+  d[k].classList.add('on');document.getElementById('fx').textContent=(k+1)+'. '+S[k][1]};
+</script>
+<h2>সংযোগের ৪টি মূল জিনিস</h2>
+<table><tr><th>#</th><th>ফ্রন্টেন্ডে</th><th>ব্যাকেন্ডে</th></tr>
+<tr><td>১. ঠিকানা</td><td><code>VITE_API_URL=http://localhost:5000</code></td><td><code>PORT=5000</code> এ listen</td></tr>
+<tr><td>২. অনুমতি (CORS)</td><td>frontend এর origin <code>http://localhost:5173</code></td><td><code>cors({ origin: [ ... ] })</code> এ ওই origin</td></tr>
+<tr><td>৩. পথ (route)</td><td><code>axiosSecure.get('/api/tasks')</code></td><td><code>app.use('/api/tasks', ...)</code></td></tr>
+<tr><td>৪. পরিচয় (JWT)</td><td>localStorage এর টোকেন → Bearer হেডার</td><td><code>verifyToken</code> যাচাই</td></tr></table>
+<div class="box w">দুই পাশের নাম মিলতে হবে: ফ্রন্টেন্ডের URL পাথ = ব্যাকেন্ডের route পথ, আর HTTP মেথড (GET/POST/PATCH/DELETE) একই হতে হবে।</div>
+<h2>Task প্রজেক্টের ফ্রন্টেন্ড অংশ</h2>
+<p>ধরে নিচ্ছি <a href="frontend.html">ফ্রন্টেন্ড পেজের</a> <code>AuthContext</code>, <code>PrivateRoute</code> ও <code>axiosSecure</code> তৈরি আছে। শুধু <code>VITE_API_URL=http://localhost:5000</code> আর baseURL ঠিক রাখো।</p>
+<script type="text/plain" data-f="src/pages/Tasks.jsx">
+import { useEffect, useState } from 'react';
+import axiosSecure from '../utils/axiosSecure'; // টোকেন সহ axios
+
+export default function Tasks() {
+  const [tasks, setTasks] = useState([]); // টাস্ক লিস্ট
+
+  // GET /api/tasks — ব্যাকেন্ড থেকে টাস্ক আনা
+  const load = async () => {
+    const res = await axiosSecure.get('/api/tasks');
+    setTasks(res.data); // state বদলালে UI আপডেট হয়
+  };
+  useEffect(() => { load(); }, []); // পেজ খুললে একবার
+
+  // POST /api/tasks — নতুন টাস্ক
+  const add = async (e) => {
+    e.preventDefault();
+    await axiosSecure.post('/api/tasks', { title: e.target.title.value });
+    e.target.reset();
+    load(); // তালিকা আবার আনো
+  };
+
+  // PATCH /api/tasks/:id — শেষ/অশেষ
+  const toggle = async (t) => {
+    await axiosSecure.patch(`/api/tasks/${t._id}`, { done: !t.done });
+    load();
+  };
+
+  // DELETE /api/tasks/:id — ডিলিট
+  const remove = async (id) => {
+    await axiosSecure.delete(`/api/tasks/${id}`);
+    load();
+  };
+
+  return (
+    <div className='max-w-xl mx-auto p-6'>
+      <form onSubmit={add} className='flex gap-2 mb-4'>
+        <input name='title' placeholder='নতুন টাস্ক' className='input input-bordered flex-1' required />
+        <button className='btn btn-primary'>যোগ</button>
+      </form>
+      {tasks.map((t) => (
+        <div key={t._id} className='flex items-center gap-3 py-2 border-b'>
+          <input type='checkbox' checked={t.done} onChange={() => toggle(t)} className='checkbox' />
+          <span className={`flex-1 ${t.done ? 'line-through' : ''}`}>{t.title}</span>
+          <button onClick={() => remove(t._id)} className='btn btn-xs btn-error'>ডিলিট</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+</script>
+<script type="text/plain" data-f="src/routes/Router.jsx (নতুন রুট যোগ)">
+// children অ্যারেতে যোগ করো — Tasks শুধু লগইন ইউজারের জন্য
+{ path: '/tasks', element: <PrivateRoute><Tasks /></PrivateRoute> },
+</script>
+<h2>লোকালি দুই টার্মিনালে চালাও</h2>
+<script type="text/plain" data-f="টার্মিনাল ১ — ব্যাকেন্ড">
+cd task-api
+npm run dev        # → Server running on port 5000
+</script>
+<script type="text/plain" data-f="টার্মিনাল ২ — ফ্রন্টেন্ড">
+cd my-project
+npm run dev        # → http://localhost:5173 (ব্রাউজারে খোলো)
+</script>
+<h2>ডেপ্লয়ের পরে কী বদলায়</h2>
+<table><tr><th>কোথায়</th><th>লোকাল</th><th>প্রোডাকশন</th></tr><tr><td>Frontend env (VITE_API_URL)</td><td>http://localhost:5000</td><td>https://your-backend.vercel.app</td></tr><tr><td>Backend cors origin</td><td>http://localhost:5173</td><td>https://your-project.web.app / .vercel.app যোগ</td></tr><tr><td>Firebase Authorized domains</td><td>localhost</td><td>প্রোডাকশন ডোমেইন যোগ</td></tr></table>
+<h2>কানেকশন না হলে চেকলিস্ট (ব্রাউজার F12 → Network)</h2>
+<table><tr><th>লক্ষণ</th><th>কারণ ও সমাধান</th></tr><tr><td>Console এ CORS error</td><td>Backend এর origin এ frontend URL যোগ করো, সার্ভার রিস্টার্ট</td></tr><tr><td>Network এ request যায়নি / ERR_CONNECTION_REFUSED</td><td>ব্যাকেন্ড চালু নেই বা VITE_API_URL ভুল; .env বদলালে Vite রিস্টার্ট</td></tr><tr><td>404</td><td>URL পাথ বা মেথড মেলেনি (<code>/api/tasks</code>)</td></tr><tr><td>401</td><td>টোকেন যায়নি — localStorage এ <code>access-token</code> আছে কিনা দেখো</td></tr><tr><td>403</td><td>টোকেন ভুল/মেয়াদ শেষ — JWT_SECRET একই কিনা দেখো</td></tr><tr><td>500</td><td>ব্যাকেন্ডের টার্মিনালের এরর লগ দেখো (DB_USER/DB_PASS?)</td></tr></table>
+</main><script src="app.js"></script></body></html>

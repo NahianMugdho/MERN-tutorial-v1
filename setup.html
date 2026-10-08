@@ -1,0 +1,76 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>সেটআপ — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="setup"><main>
+<h2>১. প্রজেক্ট সেটআপ ও টেক স্ট্যাক</h2>
+<h3>ফ্রন্টেন্ড প্রজেক্ট তৈরি</h3>
+<script type="text/plain" data-f="Terminal">
+# Vite দিয়ে React প্রজেক্ট তৈরি
+npm create vite@latest my-project -- --template react
+cd my-project
+
+# প্রয়োজনীয় প্যাকেজ ইনস্টল
+npm install
+npm install react-router-dom
+npm install axios
+npm install firebase
+
+# Tailwind CSS + DaisyUI
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+npm install daisyui
+</script>
+<script type="text/plain" data-f="tailwind.config.js">
+/** @type {import('tailwindcss').Config} */
+export default {
+  // কোন কোন ফাইলে Tailwind ক্লাস খুঁজবে
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  theme: { extend: {} },
+  // DaisyUI প্লাগইন যুক্ত করা
+  plugins: [require('daisyui')],
+  daisyui: { themes: ['light', 'dark', 'cupcake', 'cyberpunk'] }, // থিম লিস্ট
+};
+</script>
+<script type="text/plain" data-f="src/index.css">
+/* Tailwind এর তিনটি লেয়ার ইমপোর্ট */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+</script>
+<h3>ব্যাকেন্ড প্রজেক্ট তৈরি</h3>
+<script type="text/plain" data-f="Terminal">
+mkdir my-backend && cd my-backend
+npm init -y
+# প্রয়োজনীয় প্যাকেজ
+npm install express mongoose dotenv cors jsonwebtoken
+npm install -D nodemon
+</script>
+<script type="text/plain" data-f="package.json (scripts অংশ)">
+"scripts": {
+  "start": "node index.js",     // প্রোডাকশনে চালানোর জন্য
+  "dev": "nodemon index.js"     // ডেভেলপমেন্টে ফাইল বদলালে অটো রিস্টার্ট
+}
+</script>
+<h2>২. ফাইল স্ট্রাকচার</h2>
+<h3>ফ্রন্টেন্ড</h3>
+<script type="text/plain">
+my-project/
+├── public/            # favicon ইত্যাদি
+├── src/
+│   ├── assets/        # ছবি, ফন্ট, আইকন
+│   ├── components/    # Navbar, Footer, Loader (রিইউজেবল)
+│   ├── pages/         # Home, Login, Register, Dashboard
+│   ├── routes/        # Router.jsx, PrivateRoute.jsx
+│   ├── context/       # AuthContext.jsx
+│   ├── hooks/         # useAuth.js
+│   ├── utils/         # axiosSecure.js
+│   ├── firebase/      # firebase.config.js
+│   ├── App.jsx
+│   └── main.jsx
+├── .env.local         # সিক্রেট কী (গিটে দিও না)
+└── tailwind.config.js
+</script>
+<h3>ব্যাকেন্ড — দুই ভার্শন</h3>
+<table><tr><th>ভার্শন ১</th><td>সব কোড <code>index.js</code> এ — ছোট প্রজেক্ট/দ্রুত কাজের জন্য</td></tr><tr><th>ভার্শন ২</th><td>config/ routes/ controllers/ models/ middlewares/ আলাদা — বড় প্রজেক্টে maintainable ও scalable</td></tr></table>
+<h2>🖥️ প্র্যাকটিস</h2>
+<p>একে একে ফ্রন্টেন্ড সেটআপ করে দেখো:</p>
+<div class="term" data-tasks="npm create vite@latest my-project -- --template react|cd my-project|npm install|npm install react-router-dom|npm install axios|npm install firebase|npm install -D tailwindcss postcss autoprefixer|npx tailwindcss init -p|npm install daisyui"></div>
+<div class="box i">💡 cd না করে <code>npm install</code> দিলে এরর আসবে — চেষ্টা করে দেখো!</div>
+</main><script src="app.js"></script></body></html>

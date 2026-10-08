@@ -1,0 +1,49 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>কুইজ — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="quiz"><main>
+<h2>📝 কুইজ — ২৫টি গুরুত্বপূর্ণ প্রশ্ন</h2>
+<div id="sc"><span id=sv>স্কোর: 0 / 25</span><button id=rs>রিসেট করুন</button></div><div id="quiz"></div>
+<script>
+// প্রশ্ন: [প্রশ্ন, [অপশন], সঠিক অপশনের ইনডেক্স, ব্যাখ্যা]
+const Q=[
+["Vite দিয়ে React প্রজেক্ট তৈরির কমান্ড কোনটি?",["npm create vite@latest my-project -- --template react","npm start react","npx make-react app","npm new react"],0,"npm create vite@latest দিয়ে Vite স্ক্যাফোল্ড হয়।"],
+["npx tailwindcss init -p কোন ফাইল বানায়?",["App.jsx ও main.jsx","tailwind.config.js ও postcss.config.js","vite.config.js","package.json"],1,"-p ফ্ল্যাগ postcss কনফিগও তৈরি করে।"],
+["DaisyUI কীভাবে যুক্ত হয়?",["index.html এ script দিয়ে","main.jsx এ import করে","tailwind.config.js এর plugins এ require('daisyui')","package.json এ scripts এ"],2,"plugins অ্যারেতে daisyui দিতে হয়।"],
+["Vite এ frontend env variable এর prefix কী?",["REACT_APP_","NEXT_PUBLIC_","VITE_","ENV_"],2,"VITE_ ছাড়া import.meta.env এ পাওয়া যায় না।"],
+["Backend এ nodemon কেন ব্যবহার হয়?",["কোড মিনিফাই করতে","ফাইল বদলালে সার্ভার অটো রিস্টার্ট করতে","ডাটাবেজ সংযোগে","টোকেন বানাতে"],1,"dev স্ক্রিপ্টে nodemon index.js দেওয়া হয়।"],
+["Express এ JSON request body পড়তে কী লাগে?",["app.use(express.json())","app.use(cors())","app.parse()","require('body')"],0,"এটি ছাড়া req.body undefined থাকে।"],
+["CORS Error এর সমাধান কী?",["Frontend পুনরায় ইনস্টল","Backend এর cors origin এ frontend URL যোগ","MongoDB রিস্টার্ট","Tailwind বদলানো"],1,"allowed origin লিস্টে URL দিতে হয়।"],
+[".env ফাইল নিয়ে সঠিক নিয়ম কোনটি?",["GitHub এ push করা","Frontend এ কপি করা","কখনো push নয়, .gitignore এ রাখা","README এ লেখা"],2,"সিক্রেট কী লিক হলে বিপদ।"],
+["JWT কয়টি অংশে বিভক্ত?",["২","৩","৪","৫"],1,"Header, Payload, Signature।"],
+["JWT এর Signature এর কাজ কী?",["ডেটা সুন্দর দেখানো","টোকেন যাচাই (verify) করা","ডাটাবেজ কানেক্ট","CORS ঠিক করা"],1,"secret দিয়ে HMAC করে টোকেন বৈধ কিনা দেখা হয়।"],
+["Authorization হেডারের সঠিক ফরম্যাট কোনটি?",["Token <token>","Bearer <token>","JWT: <token>","Auth=<token>"],1,"Backend split(' ')[1] দিয়ে টোকেন নেয়।"],
+["Authorization header না থাকলে কোন স্ট্যাটাস দেওয়া হয়?",["200","401","403","404"],1,"401 = Unauthorized।"],
+["টোকেন ভুল/মেয়াদোত্তীর্ণ হলে কোন স্ট্যাটাস?",["401","403","500","201"],1,"verify ব্যর্থ হলে 403 Forbidden।"],
+["verifyToken middleware কোথায় বসে?",["Route handler এর আগে","Route handler এর পরে","index.html এ","firebase.config এ"],0,"route('/path', verifyToken, handler)।"],
+["এই গাইডে JWT টোকেন frontend এ কোথায় রাখা হয়?",["Cookie","localStorage (access-token)","MongoDB","Redux only"],1,"localStorage.setItem('access-token', token)।"],
+["JWT আনার best জায়গা কোনটি?",["Login.jsx এর বাটনে","onAuthStateChanged এর ভেতরে","vite.config.js এ","index.css এ"],1,"Firebase লগইন নিশ্চিত হওয়ার পরপরই।"],
+["PrivateRoute এ ইউজার না থাকলে কী হয়?",["Home এ যায়","/login এ Navigate করে","Error ছোড়ে","কিছুই না"],1,"state={{from: location}} সহ /login এ পাঠায়।"],
+["PrivateRoute এ loading চেক কেন?",["স্টাইলের জন্য","রিফ্রেশে ইউজার null থাকা অবস্থায় ভুল redirect এড়াতে","দ্রুত করার জন্য","টোকেন মুছতে"],1,"Firebase অবস্থা জানার আগে redirect করা যাবে না।"],
+["axios request interceptor এর কাজ কী?",["প্রতি রিকোয়েস্টে টোকেন যোগ করা","পেজ রিফ্রেশ","রুট বানানো","CSS লোড"],0,"config.headers.authorization সেট করে।"],
+["Vercel এ React Router এ refresh দিলে 404 এর সমাধান?",["vercel.json এ rewrites দেওয়া","npm install আবার","DaisyUI বদলানো","MongoDB আপডেট"],0,"সব পাথ /index.html এ rewrite।"],
+["Firebase Hosting এ Vite প্রজেক্টের public directory কী?",["build","public","dist","src"],2,"npm run build করলে dist/ তৈরি হয়।"],
+["MongoDB তে id দিয়ে ডকুমেন্ট ডিলিটে কী লাগে?",["_id: id (স্ট্রিং)","_id: new ObjectId(id)","id: Number(id)","_id: parseInt(id)"],1,"স্ট্রিং id কে ObjectId তে রূপান্তর করতে হয়।"],
+["ভার্শন ২ এ app.js ও index.js আলাদা রাখার কারণ কী?",["দুটোই একই কাজ","app.js এ Express কনফিগ, index.js এ DB কানেক্ট ও সার্ভার চালু — দায়িত্ব আলাদা","index.js ফ্রন্টেন্ডে যায়","app.js ডাটাবেজ"],1,"এতে মেইনটেন ও টেস্ট সহজ হয়।"],
+["Controller এর কাজ কী?",["শুধু CSS","রুট ও middleware এর পর আসল লজিক (DB কাজ) করা","Firebase কনফিগ","env পড়া"],1,"Route পথ ঠিক করে, কাজ করে controller।"],
+["Frontend কে Backend এর ঠিকানা কোথায় জানানো হয়?",["tailwind.config.js এ","VITE_API_URL এনভায়রনমেন্ট ভ্যারিয়েবলে","package.json এর name এ","favicon এ"],1,"axiosSecure এর baseURL এ ব্যবহার হয়।"]
+];
+let s=0;const box=document.getElementById('quiz');
+function render(){s=0;box.innerHTML='';document.getElementById('sv').textContent='স্কোর: 0 / '+Q.length;
+Q.forEach((q,n)=>{
+  const d=document.createElement('div');d.className='q';
+  d.innerHTML=`<b>${n+1}. ${q[0]}</b>`;
+  q[1].forEach((o,k)=>{
+    const b=document.createElement('button');b.textContent=o;
+    b.onclick=()=>{
+      if(d.dataset.done)return;d.dataset.done=1;       // একবারই উত্তর দেওয়া যাবে
+      if(k==q[2]){b.className='y';s++;d.classList.add('ok')}else{b.className='n';d.classList.add('bad');d.querySelectorAll('button')[q[2]].className='y'}
+      d.querySelector('.ex').style.display='block';
+      document.getElementById('sv').textContent='স্কোর: '+s+' / '+Q.length;};
+    d.append(b)});
+  d.insertAdjacentHTML('beforeend','<div class=ex>💡 '+q[3]+'</div>');box.append(d)})}
+render();document.getElementById('rs').onclick=render; // রিসেট বাটন
+</script>
+</main><script src="app.js"></script></body></html>

@@ -1,0 +1,79 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ব্যাকেন্ড — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="backend"><main>
+<h2>৩. ব্যাকেন্ড কোড</h2>
+<h3>ভার্শন ১: index.js এ সব কোড</h3>
+<script type="text/plain" data-f="index.js">
+const express = require('express');
+const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+require('dotenv').config(); // .env ফাইল লোড করে
+
+const app = express();
+const port = process.env.PORT || 5000; // পোর্ট না থাকলে ৫০০০
+
+// Middleware: কোন ওয়েবসাইট থেকে রিকোয়েস্ট আসতে পারবে
+app.use(cors({ origin: ['http://localhost:5173', 'https://your-site.web.app'] }));
+app.use(express.json()); // JSON বডি পড়ার জন্য
+
+// MongoDB কানেকশন স্ট্রিং
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.xxxx.mongodb.net/`;
+const client = new MongoClient(uri, { serverApi: ServerApiVersion.v1 });
+
+async function run() {
+  try {
+    await client.connect(); // ডাটাবেজে কানেক্ট
+    const db = client.db('myDatabase');
+    const usersCollection = db.collection('users');
+    const productsCollection = db.collection('products');
+
+    // ===== JWT রুট: ইমেইল দিলে টোকেন বানায় =====
+    app.post('/jwt', async (req, res) => {
+      const token = jwt.sign(req.body, process.env.JWT_SECRET, { expiresIn: '1h' });
+      res.send({ token });
+    });
+
+    // ===== verifyToken middleware: টোকেন যাচাই করে =====
+    const verifyToken = (req, res, next) => {
+      const authHeader = req.headers.authorization;
+      // হেডার না থাকলে 401
+      if (!authHeader) return res.status(401).send({ message: 'Unauthorized' });
+      const token = authHeader.split(' ')[1]; // "Bearer xxx" থেকে xxx
+      jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) return res.status(403).send({ message: 'Forbidden' }); // ভুল টোকেন
+        req.decoded = decoded; // পরের ফাংশনে ইউজারের তথ্য
+        next();
+      });
+    };
+
+    // ===== User রুট =====
+    app.post('/users', async (req, res) => {
+      const user = req.body;
+      const exists = await usersCollection.findOne({ email: user.email });
+      if (exists) return res.send({ message: 'User already exists', insertedId: null });
+      res.send(await usersCollection.insertOne(user)); // নতুন ইউজার সেভ
+    });
+    app.get('/users', verifyToken, async (req, res) => {
+      res.send(await usersCollection.find().toArray()); // শুধু লগইন ইউজার দেখবে
+    });
+
+    // ===== Product রুট =====
+    app.get('/products', async (req, res) => res.send(await productsCollection.find().toArray()));
+    app.post('/products', verifyToken, async (req, res) => {
+      res.send(await productsCollection.insertOne(req.body));
+    });
+    app.delete('/products/:id', verifyToken, async (req, res) => {
+      // স্ট্রিং id কে ObjectId তে রূপান্তর করতে হয়
+      res.send(await productsCollection.deleteOne({ _id: new ObjectId(req.params.id) }));
+    });
+
+    app.get('/', (req, res) => res.send('Server is running!'));
+    app.listen(port, () => console.log(`Server running on port ${port}`));
+  } finally {}
+}
+run().catch(console.dir);
+</script>
+<div class="box s"><b>⭐ ভার্শন ২ (আলাদা ফাইল) — বড় প্রজেক্টের জন্য সবচেয়ে গুরুত্বপূর্ণ!</b><br>config / routes / controllers / models / middlewares ভাগ করে একটি সিম্পল Task API বানানো ধাপে ধাপে দেখো: <a href="backend-v2.html"><b>ব্যাকেন্ড ভার্শন ২ টিউটোরিয়াল →</b></a></div>
+<div class="box w">⚠️ <code>.env</code> কখনো GitHub এ push করবে না। <code>.gitignore</code> এ <code>.env</code> যোগ করো।</div>
+<h2>🖥️ প্র্যাকটিস</h2>
+<div class="term" data-tasks="mkdir my-backend && cd my-backend|npm init -y|npm install express mongoose dotenv cors jsonwebtoken|npm install -D nodemon|touch index.js|npm run dev"></div>
+</main><script src="app.js"></script></body></html>
