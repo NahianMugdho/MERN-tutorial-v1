@@ -1,5 +1,5 @@
 // ===== পেজ লিস্ট: [ফাইল, আইকন, লেবেল] =====
-const P=[['index','fa-home','ড্যাশবোর্ড'],['setup','fa-cogs','১-২ সেটআপ ও স্ট্রাকচার'],['backend','fa-server','৩ ব্যাকেন্ড ভার্শন ১'],['backend-v2','fa-folder-tree','ব্যাকেন্ড ভার্শন ২ (প্রজেক্ট)'],['connect','fa-plug','ফ্রন্টেন্ড ↔ ব্যাকেন্ড'],['frontend','fa-brands fa-react','৪-৫ ফ্রন্টেন্ড ও Firebase'],['jwt','fa-key','৬ JWT'],['deploy','fa-cloud-arrow-up','৭-৮ ডেপ্লয়'],['terminal','fa-terminal','টার্মিনাল সিমুলেটর'],['quiz','fa-list-check','কুইজ (২৫টি)'],['project','fa-code','ফুল প্রজেক্ট কোড']];
+const P=[['index','fa-home','ড্যাশবোর্ড'],['roadmap','fa-route','⭐ ইন্টারেক্টিভ রোডম্যাপ'],['setup','fa-cogs','১-২ সেটআপ ও স্ট্রাকচার'],['backend','fa-server','৩ ব্যাকেন্ড ভার্শন ১'],['backend-v2','fa-folder-tree','ব্যাকেন্ড ভার্শন ২ (প্রজেক্ট)'],['advanced','fa-shield-halved','অ্যাডভান্সড সিকিউরিটি'],['secure-project','fa-lock','সিকিউর মিনি প্রজেক্ট'],['connect','fa-plug','ফ্রন্টেন্ড ↔ ব্যাকেন্ড'],['frontend','fa-brands fa-react','৪-৫ ফ্রন্টেন্ড ও Firebase'],['jwt','fa-key','৬ JWT'],['deploy','fa-cloud-arrow-up','৭-৮ ডেপ্লয়'],['terminal','fa-terminal','টার্মিনাল সিমুলেটর'],['quiz','fa-list-check','কুইজ (২৫টি)'],['project','fa-code','ফুল প্রজেক্ট কোড']];
 const cur=document.body.dataset.p,i=P.findIndex(p=>p[0]==cur);
 // ফন্ট ও আইকন লাইব্রেরি
 document.head.insertAdjacentHTML('beforeend','<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Fira+Code&display=swap" rel="stylesheet">');
@@ -72,3 +72,12 @@ function term(el){
   pr();showT();say('স্বাগতম! help লিখে কমান্ড দেখো।','ok');
 }
 document.querySelectorAll('.term').forEach(term);
+
+// ===== শেয়ার্ড স্টেপ-অ্যানিমেশন: flow(id, [[লেবেল, ব্যাখ্যা], ...]) =====
+function flow(id,S){const el=document.getElementById(id);let k=-1,tm=null;
+  el.innerHTML='<div class=fl></div><div class="box s fx">▶ ধাপে ক্লিক করো বা "পরের ধাপ" চাপো</div><button class=fb data-d=-1>◀ আগে</button><button class=fb data-d=1>পরের ধাপ ▶</button><button class=fb data-a=1>▶▶ অটো প্লে</button>';
+  const fl=el.querySelector('.fl'),fx=el.querySelector('.fx');
+  S.forEach((s,n)=>fl.insertAdjacentHTML('beforeend',(n?'<span>→</span>':'')+'<div data-n='+n+'>'+s[0]+'</div>'));
+  const go=n=>{k=(n+S.length)%S.length;fl.querySelectorAll('div').forEach((d,j)=>d.classList.toggle('on',j==k));fx.innerHTML=(k+1)+'/'+S.length+' — '+S[k][1]};
+  fl.onclick=e=>{if(e.target.dataset.n)go(+e.target.dataset.n)};
+  el.querySelectorAll('.fb').forEach(b=>b.onclick=()=>{if(b.dataset.a){if(tm){clearInterval(tm);tm=null;b.textContent='▶▶ অটো প্লে'}else{tm=setInterval(()=>go(k+1),2500);b.textContent='⏸ থামাও'}}else go(k+ +b.dataset.d)})}

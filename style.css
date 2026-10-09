@@ -31,3 +31,21 @@ table{border-collapse:collapse;width:100%;background:var(--c);margin:10px 0}th{b
 .q button.y{background:#c8f0cc;border-color:var(--g);color:#111}.q button.n{background:#ffd6d6;border-color:var(--r);color:#111}.ex{display:none;font-size:14px;opacity:.85}
 #sc{position:sticky;top:-10px;background:var(--c);padding:10px 16px;border-radius:8px;z-index:5;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 4px #0003;font-weight:700}#sc button{background:#ef4444;color:#fff;border:0;border-radius:6px;padding:6px 14px;cursor:pointer}
 .fl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;margin:14px 0}.fl div{background:var(--c);border:2px solid var(--bd);border-radius:8px;padding:8px 12px;font-size:13px;text-align:center;transition:.3s}.fl div.on{border-color:#22c55e;background:#dcfce7;color:#111;transform:scale(1.08)}
+.fb{background:var(--b);color:#fff;border:0;border-radius:6px;padding:6px 14px;margin:2px;cursor:pointer;font:inherit;font-size:14px}.fl div{cursor:pointer}
+.tabs button{background:var(--bd);color:var(--t);border:0;padding:8px 18px;border-radius:8px 8px 0 0;cursor:pointer;font:inherit;font-weight:700}.tabs button.on{background:var(--b);color:#fff}
+.dots{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}.dots button{width:34px;height:34px;border-radius:50%;border:2px solid var(--bd);background:var(--c);color:var(--t);cursor:pointer;font-weight:700}.dots button.dn{background:#22c55e;color:#fff;border-color:#22c55e}.dots button.on{background:var(--b);color:#fff;border-color:var(--b);transform:scale(1.2)}
+.pb{height:8px;background:var(--bd);border-radius:6px;overflow:hidden}.pb i{display:block;height:100%;background:#22c55e;transition:width .4s}
+.fg{display:inline-block;vertical-align:top;margin:6px 10px 6px 0;background:var(--c);border:1px solid var(--bd);border-radius:8px;padding:6px 10px}.fg b{font-size:12px;opacity:.6}
+.fc{display:block;font:13px monospace;padding:2px 8px;margin:3px 0;border-radius:4px;opacity:.25;border:1px dashed var(--bd);transition:.4s}.fc.dn{opacity:1;border:1px solid #22c55e;background:#dcfce7;color:#14532d}.fc.nw{opacity:1;background:var(--b);color:#fff;animation:pl 1s infinite}@keyframes pl{50%{box-shadow:0 0 0 5px #4f46e555}}
+.cmd{background:#0d1117;color:#3fb950;padding:10px 14px;border-radius:8px;font:13px/1.6 monospace;white-space:pre-wrap;margin:8px 0}
+/* রোডম্যাপ পেজ: সাইটের নেভি/ইন্ডিগো নীল ব্যাকগ্রাউন্ড */
+body[data-p=roadmap] main{background:linear-gradient(160deg,#071631,#141250);color:#fff}
+body[data-p=roadmap] h2,body[data-p=roadmap] h3{color:#c7d2fe;border-color:#818cf8}
+body[data-p=roadmap] a{color:#a5b4fc}body[data-p=roadmap] .fb{color:#fff;background:#4F46E5}
+body[data-p=roadmap] .box{background:#ffffff1f!important;color:#fff;border-color:#a5b4fc}
+body[data-p=roadmap] .fg{background:#ffffff14;border-color:#ffffff40}
+body[data-p=roadmap] .fc{border-color:#ffffff55}
+body[data-p=roadmap] .dots button{background:#ffffff22;color:#fff;border-color:#ffffff55}
+body[data-p=roadmap] .dots button.dn{background:#22c55e;border-color:#22c55e}body[data-p=roadmap] .dots button.on{background:#4F46E5;border-color:#fff}
+body[data-p=roadmap] .tabs button{background:#ffffff22;color:#fff}body[data-p=roadmap] .tabs button.on{background:#4F46E5}
+body[data-p=roadmap] .pb{background:#ffffff33}body[data-p=roadmap] .pg a{background:#4F46E5}body[data-p=roadmap] footer{color:#c7d2fe}

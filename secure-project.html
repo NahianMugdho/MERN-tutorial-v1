@@ -1,0 +1,543 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>সিকিউর মিনি প্রজেক্ট — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="secure-project"><main>
+<h2>🔒 সিকিউর মিনি প্রজেক্ট: secure-api</h2>
+<div class="box i"><b>প্রজেক্টটা কিসের ওপর?</b><br>একটা ছোট ব্যাকেন্ড যেখানে অ্যাডভান্সড পেজের সবকিছু একসাথে চলে: Argon2 পাসওয়ার্ড, access+refresh টোকেন (rotation ও revoke), 2FA, Redis, rate limit ও API cache। ডাটা: users ও tasks। ফ্রন্টেন্ড ছাড়াই curl দিয়ে পুরোটা টেস্ট করা যায়।</div>
+<table><tr><th>ফিচার</th><th>কোন ফাইলে</th></tr>
+<tr><td>Argon2</td><td><code>utils/password.js</code> → <code>auth.controller</code> (register/login)</td></tr>
+<tr><td>Access/Refresh, Rotation, Revoke</td><td><code>utils/tokens.js</code>, <code>verifyAccess.js</code>, refresh/logout কন্ট্রোলার</td></tr>
+<tr><td>2FA</td><td><code>utils/twofa.js</code>, setup/enable/verify2fa</td></tr>
+<tr><td>Rate limit</td><td><code>middlewares/rateLimit.js</code> (app.js ও auth.routes এ)</td></tr>
+<tr><td>Redis</td><td><code>config/redis.js</code> — সবার নিচে</td></tr>
+<tr><td>API Cache</td><td><code>middlewares/cache.js</code> → task.routes/controller</td></tr></table>
+<h3>🎬 ইন্টারেক্টিভ: পুরো প্রজেক্ট ব্যবহারের ক্রম</h3><div id="f3"></div>
+<script>
+addEventListener('DOMContentLoaded',()=>flow('f3',[["Register","POST /register → Argon2 হ্যাশ → users এ সেভ"],["Login","POST /login (rate limit ৫/১৫মি) → পাসওয়ার্ড মেলে → টোকেন জোড়া"],["2FA Setup","POST /2fa/setup → QR → অ্যাপে স্ক্যান → POST /2fa/enable {code}"],["Login (2FA)","/login → tempToken → /2fa/verify {tempToken, code} → টোকেন জোড়া"],["GET tasks","verifyAccess → cache MISS → DB → Redis সেভ"],["GET tasks","cache HIT (X-Cache: HIT)"],["POST task","DB তে লেখা + cache মোছা"],["Refresh","access শেষ → /refresh → rotation → নতুন জোড়া"],["Logout","refresh+access বাতিল, কুকি মোছা"]]));
+</script>
+<h2>স্ট্রাকচার ও ক্রম</h2>
+<script type="text/plain" data-f="ফাইল স্ট্রাকচার">
+secure-api/
+├── index.js                     # সার্ভার চালু
+├── app.js                       # Express কনফিগ
+├── config/        db.js  redis.js
+├── models/        user.model.js  task.model.js
+├── utils/         password.js  twofa.js  tokens.js
+├── middlewares/   verifyAccess.js  rateLimit.js  cache.js
+├── controllers/   auth.controller.js  task.controller.js
+├── routes/        auth.routes.js  task.routes.js
+└── .env  package.json
+</script>
+<script type="text/plain" data-f="Terminal">
+mkdir secure-api && cd secure-api && npm init -y
+npm install express cors dotenv cookie-parser jsonwebtoken mongodb argon2 ioredis express-rate-limit rate-limit-redis otplib@12 qrcode
+npm install -D nodemon
+docker run -d --name redis -p 6379:6379 redis   # Redis চালু
+</script>
+<table><tr><th>ক্রম</th><th>ফাইল</th><th>কাজ</th></tr>
+<tr><td>1</td><td><code>package.json</code></td><td>সব প্যাকেজের তালিকা: argon2, ioredis, rate-limit, otplib ইত্যাদি। mkdir secure-api && cd secure-api && npm init -y করে নিচের প্যাকেজ ইনস্টল করলেই হবে।</td></tr>
+<tr><td>2</td><td><code>.env</code></td><td>৩টা আলাদা সিক্রেট (access, refresh, temp-2FA) ও Redis URL।</td></tr>
+<tr><td>3</td><td><code>config/db.js</code> , <code>config/redis.js</code></td><td>MongoDB ও Redis এ সংযোগ।</td></tr>
+<tr><td>4</td><td><code>models/user.model.js</code> , <code>models/task.model.js</code></td><td>users ও tasks collection হেল্পার।</td></tr>
+<tr><td>5</td><td><code>utils/password.js</code> , <code>utils/twofa.js</code> , <code>utils/tokens.js</code></td><td>পাসওয়ার্ড হ্যাশ, TOTP, টোকেন তৈরি/rotation/revoke — অ্যাপের হৃদয়।</td></tr>
+<tr><td>6</td><td><code>middlewares/verifyAccess.js</code> , <code>middlewares/rateLimit.js</code> , <code>middlewares/cache.js</code></td><td>টোকেন যাচাই, রেট-লিমিট, API ক্যাশ।</td></tr>
+<tr><td>7</td><td><code>controllers/auth.controller.js</code> , <code>controllers/task.controller.js</code></td><td>auth: register, login, 2FA, refresh, logout; task: cache-সহ টাস্ক।</td></tr>
+<tr><td>8</td><td><code>routes/auth.routes.js</code> , <code>routes/task.routes.js</code></td><td>কোন URL এ কোন middleware + controller; লগইন রুটে loginLimiter।</td></tr>
+<tr><td>9</td><td><code>app.js</code> , <code>index.js</code></td><td>app.js: CORS(credentials), cookieParser, globalLimiter, রুট; index.js: DB কানেক্ট → সার্ভার চালু।</td></tr>
+<tr><td>10</td><td><code>src/utils/axiosSecure.js</code></td><td>React এ access token মেমরিতে + অটো refresh interceptor। লগইনের পর <code>setAccessToken(res.data.accessToken)</code> ডাকো।</td></tr>
+</table>
+<h3>ধাপ 1: প্রজেক্ট ও প্যাকেজ</h3>
+<div class="box i"><b>কাজ:</b> সব প্যাকেজের তালিকা: argon2, ioredis, rate-limit, otplib ইত্যাদি। mkdir secure-api && cd secure-api && npm init -y করে নিচের প্যাকেজ ইনস্টল করলেই হবে।<br><b>ক্রম কেন:</b> ভিত্তি।</div>
+<script type="text/plain" data-f="package.json (JSON এ কমেন্ট চলে না)">
+{
+  "name": "secure-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": { "start": "node index.js", "dev": "nodemon index.js" },
+  "dependencies": {
+    "argon2": "^0.40.1", "cookie-parser": "^1.4.6", "cors": "^2.8.5", "dotenv": "^16.4.5",
+    "express": "^4.19.2", "express-rate-limit": "^7.2.0", "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2", "mongodb": "^6.5.0", "otplib": "^12.0.1",
+    "qrcode": "^1.5.3", "rate-limit-redis": "^4.2.0"
+  },
+  "devDependencies": { "nodemon": "^3.1.0" }
+}
+</script>
+<h3>ধাপ 2: সিক্রেট</h3>
+<div class="box i"><b>কাজ:</b> ৩টা আলাদা সিক্রেট (access, refresh, temp-2FA) ও Redis URL।<br><b>ক্রম কেন:</b> পরের সব ফাইল এগুলো পড়ে।</div>
+<script type="text/plain" data-f=".env">
+# সার্ভারের পোর্ট
+PORT=5000
+NODE_ENV=development
+# MongoDB Atlas
+DB_USER=your_mongodb_username
+DB_PASS=your_mongodb_password
+# Redis (লোকালে এটাই; Upstash হলে তাদের URL)
+REDIS_URL=redis://127.0.0.1:6379
+# তিনটি আলাদা সিক্রেট — প্রতিটি লম্বা র‍্যান্ডম স্ট্রিং দাও
+ACCESS_SECRET=change_me_access_secret
+REFRESH_SECRET=change_me_refresh_secret
+TEMP_SECRET=change_me_temp_secret_for_2fa
+</script>
+<h3>ধাপ 3: ডাটাবেজ ও Redis কানেকশন</h3>
+<div class="box i"><b>কাজ:</b> MongoDB ও Redis এ সংযোগ।<br><b>ক্রম কেন:</b> models, tokens, rateLimit, cache সবাই এগুলো ব্যবহার করে।</div>
+<script type="text/plain" data-f="config/db.js">
+const { MongoClient, ServerApiVersion } = require('mongodb');
+
+// .env এর ইউজার ও পাসওয়ার্ড দিয়ে কানেকশন স্ট্রিং
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.xxxx.mongodb.net/`;
+const client = new MongoClient(uri, {
+  serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true },
+});
+
+let connected = false; // বারবার কানেক্ট এড়াতে
+
+// ডাটাবেজে কানেক্ট করার ফাংশন
+const connectDB = async () => {
+  if (!connected) {
+    await client.connect();
+    connected = true;
+    console.log('MongoDB Connected');
+  }
+};
+
+// ডাটাবেজ অবজেক্ট ফেরত দেয় (models এ ব্যবহার হয়)
+const getDB = () => client.db('taskDB');
+
+module.exports = { connectDB, getDB };
+</script>
+<script type="text/plain" data-f="config/redis.js">
+const Redis = require('ioredis');
+
+// লোকালে redis://127.0.0.1:6379, ক্লাউডে Upstash/Redis Cloud এর URL (.env এ)
+const redis = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
+
+redis.on('connect', () => console.log('Redis Connected'));
+redis.on('error', (e) => console.log('Redis error:', e.message));
+
+module.exports = redis;
+</script>
+<h3>ধাপ 4: models</h3>
+<div class="box i"><b>কাজ:</b> users ও tasks collection হেল্পার।<br><b>ক্রম কেন:</b> controller এ লাগবে।</div>
+<script type="text/plain" data-f="models/user.model.js">
+const { getDB } = require('../config/db');
+// users collection ফেরত দেয়
+module.exports = () => getDB().collection('users');
+</script>
+<script type="text/plain" data-f="models/task.model.js">
+const { getDB } = require('../config/db');
+// tasks collection ফেরত দেয় — controller এ Tasks().find() ভাবে ব্যবহার হবে
+module.exports = () => getDB().collection('tasks');
+</script>
+<h3>ধাপ 5: utils: Argon2, 2FA, Tokens</h3>
+<div class="box i"><b>কাজ:</b> পাসওয়ার্ড হ্যাশ, TOTP, টোকেন তৈরি/rotation/revoke — অ্যাপের হৃদয়।<br><b>ক্রম কেন:</b> controller এগুলো সরাসরি ডাকে।</div>
+<script type="text/plain" data-f="utils/password.js">
+const argon2 = require('argon2');
+
+// argon2id: GPU ও side-channel দুই আক্রমণেই শক্ত
+const OPTIONS = {
+  type: argon2.argon2id,
+  memoryCost: 19456, // ~19MB মেমরি লাগবে প্রতি হ্যাশে
+  timeCost: 2,       // কতবার ঘুরবে
+  parallelism: 1,
+};
+
+// রেজিস্টারে: salt সহ হ্যাশ স্ট্রিং বানায় — এটাই DB তে যায়
+exports.hashPassword = (plain) => argon2.hash(plain, OPTIONS);
+
+// লগইনে: হ্যাশ ও দেওয়া পাসওয়ার্ড মেলায় (true/false)
+exports.verifyPassword = (hash, plain) => argon2.verify(hash, plain);
+</script>
+<script type="text/plain" data-f="utils/twofa.js">
+const { authenticator } = require('otplib');
+const QRCode = require('qrcode');
+
+// নতুন secret ও অ্যাপে যোগ করার otpauth লিংক বানায়
+exports.generateSecret = (email) => {
+  const secret = authenticator.generateSecret();
+  const otpauth = authenticator.keyuri(email, 'SecureApp', secret); // অ্যাপে যে নামে দেখাবে
+  return { secret, otpauth };
+};
+
+// otpauth লিংক → QR ছবি (data URL, <img src> এ বসানো যায়)
+exports.qrDataUrl = (otpauth) => QRCode.toDataURL(otpauth);
+
+// ইউজারের দেওয়া ৬ ডিজিট কোড সঠিক কিনা
+exports.verifyCode = (code, secret) => authenticator.check(code, secret);
+</script>
+<script type="text/plain" data-f="utils/tokens.js">
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const redis = require('../config/redis');
+
+const ACCESS_TTL = 15 * 60;        // ১৫ মিনিট (সেকেন্ডে)
+const REFRESH_TTL = 7 * 24 * 3600; // ৭ দিন
+
+// Access token: ছোট মেয়াদ। jti = টোকেনের ইউনিক আইডি (revoke এ লাগে)
+exports.signAccess = (user) =>
+  jwt.sign({ sub: user._id.toString(), email: user.email, jti: crypto.randomUUID() },
+    process.env.ACCESS_SECRET, { expiresIn: ACCESS_TTL });
+
+// Refresh token: লম্বা মেয়াদ। Redis এ jti থাকলেই টোকেন বৈধ
+exports.signRefresh = async (user) => {
+  const jti = crypto.randomUUID();
+  const token = jwt.sign({ sub: user._id.toString(), jti }, process.env.REFRESH_SECRET, { expiresIn: REFRESH_TTL });
+  await redis.set(`rt:${user._id}:${jti}`, '1', 'EX', REFRESH_TTL); // বৈধ তালিকায় রাখো
+  await redis.sadd(`rts:${user._id}`, jti);                          // ইউজারের সব সেশনের তালিকা
+  return token;
+};
+
+// Rotation: পুরনো refresh বাতিল করে ইউজার আইডি ফেরত দেয়
+exports.rotate = async (oldToken) => {
+  const p = jwt.verify(oldToken, process.env.REFRESH_SECRET);   // ভুল/মেয়াদোত্তীর্ণ হলে throw
+  const removed = await redis.del(`rt:${p.sub}:${p.jti}`);      // 1 = ছিল, 0 = আগেই ব্যবহৃত
+  if (removed === 0) {
+    await exports.revokeAll(p.sub);                              // reuse ধরা পড়ল → সব সেশন বাতিল
+    throw new Error('Refresh token reuse detected');
+  }
+  await redis.srem(`rts:${p.sub}`, p.jti);
+  return p.sub;
+};
+
+// একটি সেশন বাতিল (logout)
+exports.revokeOne = async (token) => {
+  const p = jwt.decode(token);               // মেয়াদ শেষ হলেও পড়া যায়
+  if (!p) return;
+  await redis.del(`rt:${p.sub}:${p.jti}`);
+  await redis.srem(`rts:${p.sub}`, p.jti);
+};
+
+// ইউজারের সব সেশন বাতিল
+exports.revokeAll = async (userId) => {
+  const jtis = await redis.smembers(`rts:${userId}`);
+  const pipe = redis.pipeline();             // একসাথে অনেক কমান্ড
+  jtis.forEach((j) => pipe.del(`rt:${userId}:${j}`));
+  pipe.del(`rts:${userId}`);
+  await pipe.exec();
+};
+
+// Access token এখনই বাতিল: jti ব্ল্যাকলিস্টে, বাকি মেয়াদ পর্যন্ত
+exports.blacklistAccess = async (payload) => {
+  const ttl = payload.exp - Math.floor(Date.now() / 1000);
+  if (ttl > 0) await redis.set(`bl:${payload.jti}`, '1', 'EX', ttl);
+};
+</script>
+<h3>ধাপ 6: middlewares</h3>
+<div class="box i"><b>কাজ:</b> টোকেন যাচাই, রেট-লিমিট, API ক্যাশ।<br><b>ক্রম কেন:</b> routes এ বসানোর জন্য তৈরি থাকতে হবে।</div>
+<script type="text/plain" data-f="middlewares/verifyAccess.js">
+const jwt = require('jsonwebtoken');
+const redis = require('../config/redis');
+
+module.exports = async (req, res, next) => {
+  const h = req.headers.authorization;
+  if (!h || !h.startsWith('Bearer ')) return res.status(401).send({ message: 'Unauthorized' });
+  try {
+    const payload = jwt.verify(h.split(' ')[1], process.env.ACCESS_SECRET); // সাইন ও মেয়াদ চেক
+    // ব্ল্যাকলিস্টে থাকলে (logout/ban) বাতিল
+    if (await redis.get(`bl:${payload.jti}`)) return res.status(401).send({ message: 'Token revoked' });
+    req.user = payload; // { sub, email, jti }
+    next();
+  } catch (e) {
+    // মেয়াদ শেষ বা ভুল — ফ্রন্টেন্ড ৪০১ পেয়ে /refresh চেষ্টা করবে
+    return res.status(401).send({ message: 'Token expired or invalid' });
+  }
+};
+</script>
+<script type="text/plain" data-f="middlewares/rateLimit.js">
+const rateLimit = require('express-rate-limit');
+const { RedisStore } = require('rate-limit-redis');
+const redis = require('../config/redis');
+
+// কমন তৈরির ফাংশন: কাউন্টার Redis এ থাকবে
+const make = (prefix, windowMs, limit, extra = {}) => rateLimit({
+  windowMs,                    // সময়ের জানালা (মিলিসেকেন্ড)
+  limit,                       // জানালায় সর্বোচ্চ রিকোয়েস্ট
+  standardHeaders: true,       // RateLimit-* হেডার পাঠায়
+  legacyHeaders: false,
+  store: new RedisStore({ prefix: `rl:${prefix}:`, sendCommand: (...args) => redis.call(...args) }),
+  message: { message: 'অনেক বেশি রিকোয়েস্ট, কিছুক্ষণ পরে চেষ্টা করো' },
+  ...extra,
+});
+
+// সব API: ১৫ মিনিটে ১০০
+exports.globalLimiter = make('global', 15 * 60 * 1000, 100);
+
+// লগইন/2FA: ১৫ মিনিটে ৫ বার, ইমেইল ধরে গোনা; সফল হলে গোনা হয় না
+exports.loginLimiter = make('login', 15 * 60 * 1000, 5, {
+  keyGenerator: (req) => (req.body?.email || req.body?.tempToken || 'unknown').toLowerCase(),
+  skipSuccessfulRequests: true,
+});
+</script>
+<script type="text/plain" data-f="middlewares/cache.js">
+const redis = require('../config/redis');
+
+// GET রুটে ব্যবহার: router.get('/', cache(60), handler) — ttl সেকেন্ডে
+exports.cache = (ttl = 60) => async (req, res, next) => {
+  // ইউজারভেদে আলাদা key, যাতে ব্যক্তিগত ডাটা মিশে না যায়
+  const key = `cache:${req.user ? req.user.sub : 'public'}:${req.originalUrl}`;
+  const hit = await redis.get(key);
+  if (hit) {
+    res.set('X-Cache', 'HIT');
+    return res.send(JSON.parse(hit)); // DB তে না গিয়েই উত্তর
+  }
+  // MISS: res.json কে মুড়ে দিই, যাতে উত্তর যাওয়ার সময় Redis এ রেখে দেয়
+  const original = res.json.bind(res);
+  res.json = (body) => {
+    redis.set(key, JSON.stringify(body), 'EX', ttl); // ttl পরে নিজে মুছে যাবে
+    res.set('X-Cache', 'MISS');
+    return original(body);
+  };
+  next();
+};
+
+// লেখার পর ওই ইউজারের সব cache মোছা (ছোট প্রজেক্টে keys ঠিক আছে, বড়তে SCAN ব্যবহার করো)
+exports.clearUserCache = async (userId) => {
+  const keys = await redis.keys(`cache:${userId}:*`);
+  if (keys.length) await redis.del(keys);
+};
+</script>
+<h3>ধাপ 7: controllers</h3>
+<div class="box i"><b>কাজ:</b> auth: register, login, 2FA, refresh, logout; task: cache-সহ টাস্ক।<br><b>ক্রম কেন:</b> utils ও models ব্যবহার করে বলে এদের পরে।</div>
+<script type="text/plain" data-f="controllers/auth.controller.js">
+const jwt = require('jsonwebtoken');
+const { ObjectId } = require('mongodb');
+const Users = require('../models/user.model');
+const { hashPassword, verifyPassword } = require('../utils/password');
+const { signAccess, signRefresh, rotate, revokeOne, revokeAll, blacklistAccess } = require('../utils/tokens');
+const { generateSecret, qrDataUrl, verifyCode } = require('../utils/twofa');
+
+const prod = process.env.NODE_ENV === 'production';
+// refresh কুকি: httpOnly = JS পড়তে পারবে না; path = শুধু /api/auth এ যাবে
+const cookieOpts = { httpOnly: true, secure: prod, sameSite: prod ? 'none' : 'lax', maxAge: 7 * 24 * 3600 * 1000, path: '/api/auth' };
+const clearOpts = { path: '/api/auth' };
+
+// দুই টোকেন পাঠানোর কমন ফাংশন: refresh → কুকিতে, access → বডিতে
+const sendTokens = async (res, user) => {
+  res.cookie('refreshToken', await signRefresh(user), cookieOpts);
+  res.send({ accessToken: signAccess(user), user: { email: user.email } });
+};
+
+// POST /api/auth/register — Argon2 হ্যাশ করে সেভ
+exports.register = async (req, res) => {
+  const { email, password } = req.body;
+  if (await Users().findOne({ email })) return res.status(409).send({ message: 'Email already used' });
+  const passwordHash = await hashPassword(password); // সাধারণ পাসওয়ার্ড কখনো সেভ হয় না
+  await Users().insertOne({ email, passwordHash, twoFA: { enabled: false, secret: null }, createdAt: new Date() });
+  res.status(201).send({ message: 'Registered' });
+};
+
+// POST /api/auth/login — ধাপ ১: পাসওয়ার্ড যাচাই
+exports.login = async (req, res) => {
+  const user = await Users().findOne({ email: req.body.email });
+  // ইউজার না থাকলেও একই বার্তা — কোন ইমেইল আছে তা গোপন রাখতে
+  if (!user || !(await verifyPassword(user.passwordHash, req.body.password)))
+    return res.status(401).send({ message: 'Invalid credentials' });
+  if (user.twoFA.enabled) {
+    // 2FA চালু: পূর্ণ টোকেন নয়, ৫ মিনিটের অস্থায়ী টোকেন (আলাদা সিক্রেটে)
+    const tempToken = jwt.sign({ sub: user._id.toString() }, process.env.TEMP_SECRET, { expiresIn: '5m' });
+    return res.send({ twoFARequired: true, tempToken });
+  }
+  await sendTokens(res, user);
+};
+
+// POST /api/auth/2fa/verify — ধাপ ২: ৬ ডিজিট কোড যাচাই
+exports.verify2fa = async (req, res) => {
+  try {
+    const p = jwt.verify(req.body.tempToken, process.env.TEMP_SECRET);
+    const user = await Users().findOne({ _id: new ObjectId(p.sub) });
+    if (!verifyCode(req.body.code, user.twoFA.secret)) return res.status(401).send({ message: 'Wrong code' });
+    await sendTokens(res, user);
+  } catch { res.status(401).send({ message: 'Invalid or expired temp token' }); }
+};
+
+// POST /api/auth/refresh — Rotation: পুরনো বাতিল, নতুন জোড়া
+exports.refresh = async (req, res) => {
+  const token = req.cookies.refreshToken; // কুকি থেকে (cookie-parser)
+  if (!token) return res.status(401).send({ message: 'No refresh token' });
+  try {
+    const userId = await rotate(token); // reuse হলে এখানেই throw
+    const user = await Users().findOne({ _id: new ObjectId(userId) });
+    await sendTokens(res, user);
+  } catch (e) {
+    res.clearCookie('refreshToken', clearOpts);
+    res.status(401).send({ message: e.message });
+  }
+};
+
+// POST /api/auth/logout — এই ডিভাইসের সেশন বাতিল
+exports.logout = async (req, res) => {
+  await revokeOne(req.cookies.refreshToken); // refresh বাতিল
+  await blacklistAccess(req.user);           // access ও এখনই বাতিল
+  res.clearCookie('refreshToken', clearOpts);
+  res.send({ message: 'Logged out' });
+};
+
+// POST /api/auth/logout-all — সব ডিভাইস
+exports.logoutAll = async (req, res) => {
+  await revokeAll(req.user.sub);
+  await blacklistAccess(req.user);
+  res.clearCookie('refreshToken', clearOpts);
+  res.send({ message: 'All sessions revoked' });
+};
+
+// POST /api/auth/2fa/setup — secret বানিয়ে QR দেয় (এখনো চালু হয় না)
+exports.setup2fa = async (req, res) => {
+  const { secret, otpauth } = generateSecret(req.user.email);
+  await Users().updateOne({ _id: new ObjectId(req.user.sub) }, { $set: { 'twoFA.secret': secret } });
+  res.send({ qr: await qrDataUrl(otpauth), secret });
+};
+
+// POST /api/auth/2fa/enable — অ্যাপের কোড ঠিক হলে তবেই চালু
+exports.enable2fa = async (req, res) => {
+  const user = await Users().findOne({ _id: new ObjectId(req.user.sub) });
+  if (!verifyCode(req.body.code, user.twoFA.secret)) return res.status(400).send({ message: 'Wrong code' });
+  await Users().updateOne({ _id: user._id }, { $set: { 'twoFA.enabled': true } });
+  res.send({ message: '2FA enabled' });
+};
+</script>
+<script type="text/plain" data-f="controllers/task.controller.js">
+const Tasks = require('../models/task.model');
+const { clearUserCache } = require('../middlewares/cache');
+
+// GET /api/tasks — শুধু নিজের টাস্ক (রুটে cache লাগানো আছে)
+exports.getTasks = async (req, res) => {
+  res.send(await Tasks().find({ owner: req.user.sub }).toArray());
+};
+
+// POST /api/tasks — নতুন টাস্ক; লেখার পর cache মুছি যাতে পুরনো ডাটা না দেখায়
+exports.addTask = async (req, res) => {
+  const result = await Tasks().insertOne({ title: req.body.title, done: false, owner: req.user.sub });
+  await clearUserCache(req.user.sub);
+  res.send(result);
+};
+</script>
+<h3>ধাপ 8: routes</h3>
+<div class="box i"><b>কাজ:</b> কোন URL এ কোন middleware + controller; লগইন রুটে loginLimiter।<br><b>ক্রম কেন:</b> controller তৈরির পর।</div>
+<script type="text/plain" data-f="routes/auth.routes.js">
+const router = require('express').Router();
+const c = require('../controllers/auth.controller');
+const verifyAccess = require('../middlewares/verifyAccess');
+const { loginLimiter } = require('../middlewares/rateLimit');
+
+// খোলা রুট (লগইন রুটে কড়া rate limit)
+router.post('/register', c.register);
+router.post('/login', loginLimiter, c.login);
+router.post('/2fa/verify', loginLimiter, c.verify2fa);
+router.post('/refresh', c.refresh);
+
+// লগইন লাগবে (verifyAccess)
+router.post('/logout', verifyAccess, c.logout);
+router.post('/logout-all', verifyAccess, c.logoutAll);
+router.post('/2fa/setup', verifyAccess, c.setup2fa);
+router.post('/2fa/enable', verifyAccess, c.enable2fa);
+
+module.exports = router;
+</script>
+<script type="text/plain" data-f="routes/task.routes.js">
+const router = require('express').Router();
+const verifyAccess = require('../middlewares/verifyAccess');
+const { cache } = require('../middlewares/cache');
+const { getTasks, addTask } = require('../controllers/task.controller');
+
+router.use(verifyAccess);           // নিচের সব রুটে লগইন লাগবে
+router.get('/', cache(60), getTasks); // ৬০ সেকেন্ড cache
+router.post('/', addTask);          // লিখলে cache মোছে
+
+module.exports = router;
+</script>
+<h3>ধাপ 9: app.js ও index.js</h3>
+<div class="box i"><b>কাজ:</b> app.js: CORS(credentials), cookieParser, globalLimiter, রুট; index.js: DB কানেক্ট → সার্ভার চালু।<br><b>ক্রম কেন:</b> সবার শেষে।</div>
+<script type="text/plain" data-f="app.js">
+const express = require('express');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const { globalLimiter } = require('./middlewares/rateLimit');
+
+const app = express();
+app.set('trust proxy', 1); // Vercel/প্রক্সির পেছনে সঠিক IP পেতে
+
+// credentials: true ছাড়া কুকি যাবে না; origin অবশ্যই নির্দিষ্ট হতে হবে
+app.use(cors({ origin: ['http://localhost:5173'], credentials: true }));
+app.use(express.json());
+app.use(cookieParser());   // req.cookies পড়ার জন্য
+app.use(globalLimiter);    // সব রুটে সাধারণ rate limit
+
+app.use('/api/auth', require('./routes/auth.routes'));
+app.use('/api/tasks', require('./routes/task.routes'));
+
+app.get('/', (req, res) => res.send('Secure API running!'));
+app.use((req, res) => res.status(404).send({ message: 'Route not found' }));
+app.use((err, req, res, next) => res.status(500).send({ message: err.message }));
+
+module.exports = app;
+</script>
+<script type="text/plain" data-f="index.js">
+require('dotenv').config(); // সবার আগে .env
+const app = require('./app');
+const { connectDB } = require('./config/db');
+require('./config/redis'); // Redis সংযোগ শুরু
+
+const port = process.env.PORT || 5000;
+// ডাটাবেজ কানেক্ট হলে তবেই সার্ভার চালু
+connectDB().then(() => app.listen(port, () => console.log(`Server running on port ${port}`))).catch(console.dir);
+</script>
+<h3>ধাপ 10: ফ্রন্টেন্ড (ঐচ্ছিক)</h3>
+<div class="box i"><b>কাজ:</b> React এ access token মেমরিতে + অটো refresh interceptor। লগইনের পর <code>setAccessToken(res.data.accessToken)</code> ডাকো।<br><b>ক্রম কেন:</b> API চালু হওয়ার পর জোড়ো।</div>
+<script type="text/plain" data-f="src/utils/axiosSecure.js (refresh সহ)">
+import axios from 'axios';
+
+let accessToken = null; // মেমরিতে রাখি — localStorage এ নয়, তাই XSS এ চুরি কঠিন
+export const setAccessToken = (t) => { accessToken = t; };
+
+// withCredentials: true না দিলে ব্রাউজার refresh কুকি পাঠাবে না
+const api = axios.create({ baseURL: import.meta.env.VITE_API_URL, withCredentials: true });
+
+// প্রতি রিকোয়েস্টে access token বসাও
+api.interceptors.request.use((c) => {
+  if (accessToken) c.headers.authorization = `Bearer ${accessToken}`;
+  return c;
+});
+
+let refreshing = null; // একসাথে অনেক ৪০১ এলেও refresh হবে একবারই
+api.interceptors.response.use((r) => r, async (err) => {
+  const original = err.config;
+  // ৪০১ এলে এবং আগে retry না হয়ে থাকলে refresh করে আবার চেষ্টা
+  if (err.response?.status === 401 && !original._retry && !original.url.includes('/api/auth/')) {
+    original._retry = true;
+    refreshing = refreshing || axios
+      .post(`${import.meta.env.VITE_API_URL}/api/auth/refresh`, null, { withCredentials: true })
+      .finally(() => { refreshing = null; });
+    try {
+      const { data } = await refreshing;
+      setAccessToken(data.accessToken); // নতুন access token
+      return api(original);             // আগের রিকোয়েস্ট আবার
+    } catch {
+      setAccessToken(null);
+      window.location.href = '/login';  // refresh ও ব্যর্থ → আবার লগইন
+    }
+  }
+  return Promise.reject(err);
+});
+export default api;
+</script>
+<h2>✅ টেস্ট করো (curl)</h2>
+<script type="text/plain" data-f="Terminal — cookies.txt এ refresh কুকি জমা হবে">
+npm run dev   # Server running on port 5000 / MongoDB Connected / Redis Connected
+
+# ১. রেজিস্টার ও লগইন (-c = কুকি সেভ)
+curl -X POST localhost:5000/api/auth/register -H "Content-Type: application/json" -d '{"email":"a@b.com","password":"Pass1234!"}'
+curl -c cookies.txt -X POST localhost:5000/api/auth/login -H "Content-Type: application/json" -d '{"email":"a@b.com","password":"Pass1234!"}'
+# → { "accessToken": "eyJ..." }  (নিচে TOKEN এর জায়গায় বসাও)
+
+# ২. Cache: প্রথমে X-Cache: MISS, ২য়বার HIT (-i = হেডার দেখাও)
+curl -i localhost:5000/api/tasks -H "Authorization: Bearer TOKEN"
+curl -i localhost:5000/api/tasks -H "Authorization: Bearer TOKEN"
+
+# ৩. Rotation: কুকি দিয়ে refresh (-b = কুকি পাঠাও, -c = নতুনটা সেভ)
+cp cookies.txt old.txt
+curl -b cookies.txt -c cookies.txt -X POST localhost:5000/api/auth/refresh
+# ৪. Reuse detection: পুরনো কুকি আবার → 401 "reuse detected", সব সেশন বাতিল
+curl -b old.txt -X POST localhost:5000/api/auth/refresh
+
+# ৫. Rate limit: ভুল পাসওয়ার্ডে ৬ বার → ৬ষ্ঠবার 429
+for i in 1 2 3 4 5 6; do curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:5000/api/auth/login -H "Content-Type: application/json" -d '{"email":"a@b.com","password":"wrong"}'; done
+</script>
+<div class="box s">Redis দেখতে: <code>docker exec -it redis redis-cli</code> → <code>KEYS *</code> (rt:, rts:, bl:, cache:, rl: key গুলো দেখা যাবে)।</div>
+</main><script src="app.js"></script></body></html>

@@ -1,0 +1,291 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>অ্যাডভান্সড সিকিউরিটি — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="advanced"><main>
+<h2>🛡️ অ্যাডভান্সড ব্যাকেন্ড সিকিউরিটি</h2>
+<p>JWT পেজে একটাই টোকেন ছিল। আসল প্রজেক্টে এটা যথেষ্ট না — টোকেন চুরি হলে কী হবে? পাসওয়ার্ড লিক হলে? ব্রুট-ফোর্স হলে? এই পেজে সেগুলোর সমাধান কোডসহ আছে। এখানকার ফাইল-নামসহ কোডগুলো সরাসরি <a href="secure-project.html"><b>সিকিউর মিনি প্রজেক্টে</b></a> ব্যবহার হয়েছে।</p>
+<table><tr><th>বিষয়</th><th>কী সমস্যা সমাধান করে</th></tr><tr><td>Access + Refresh Token</td><td>ছোট মেয়াদি টোকেন → চুরি হলে ক্ষতি কম</td></tr><tr><td>Rotation + Revoke</td><td>চুরি ধরা ও সেশন বাতিল</td></tr><tr><td>Redis</td><td>দ্রুত স্টোর: সেশন, ব্ল্যাকলিস্ট, রেট-লিমিট, ক্যাশ</td></tr><tr><td>Rate Limit</td><td>ব্রুট-ফোর্স ও স্প্যাম ঠেকানো</td></tr><tr><td>Argon2</td><td>পাসওয়ার্ড নিরাপদে হ্যাশ</td></tr><tr><td>2FA (TOTP)</td><td>পাসওয়ার্ড জানলেও ঢুকতে না পারা</td></tr><tr><td>API Cache</td><td>দ্রুত রেসপন্স, ডাটাবেজের চাপ কম</td></tr></table>
+
+<h2>১. Access Token vs Refresh Token</h2>
+<table><tr><th></th><th>Access Token</th><th>Refresh Token</th></tr>
+<tr><td>কাজ</td><td>প্রতিটি API তে পরিচয় দেখানো</td><td>নতুন access token আনা</td></tr>
+<tr><td>মেয়াদ</td><td>ছোট — ১৫ মিনিট</td><td>লম্বা — ৭ দিন</td></tr>
+<tr><td>কোথায় রাখবে</td><td>ফ্রন্টেন্ডের মেমরিতে (JS ভ্যারিয়েবল)</td><td>httpOnly কুকি (JS পড়তে পারে না)</td></tr>
+<tr><td>কোথায় যায়</td><td><code>Authorization: Bearer ...</code></td><td>শুধু <code>/api/auth/refresh</code> এ, ব্রাউজার নিজে পাঠায়</td></tr>
+<tr><td>সার্ভারে স্টোর</td><td>না (stateless), শুধু revoke হলে ব্ল্যাকলিস্ট</td><td>হ্যাঁ — Redis এ jti, নইলে revoke করা যায় না</td></tr></table>
+<div class="box i"><b>কেন দুটো?</b> একটাই লম্বা টোকেন চুরি হলে ৭ দিন হ্যাকার ঢুকতে পারে। ছোট access token চুরি হলে ১৫ মিনিটেই অকেজো; আর লম্বা refresh token এমন জায়গায় (httpOnly কুকি) যেখানে XSS পৌঁছায় না এবং সার্ভার চাইলেই বাতিল করতে পারে।</div>
+<h3>🎬 ইন্টারেক্টিভ: টোকেনের পুরো জীবনচক্র</h3>
+<div id="f1"></div>
+<script>
+addEventListener('DOMContentLoaded',()=>flow('f1',[
+["১ Login","email+password যায়। সার্ভার Argon2 দিয়ে পাসওয়ার্ড মেলায়"],
+["২ 2FA?","2FA চালু থাকলে পূর্ণ টোকেন নয় — ৫ মিনিটের tempToken আসে, তারপর ৬ ডিজিট কোড দিতে হয়"],
+["৩ টোকেন জোড়া","সার্ভার দেয়: access (১৫ মিনিট, বডিতে) + refresh (৭ দিন, httpOnly কুকিতে)। Redis এ <code>rt:user:jti</code> সেভ হয়"],
+["৪ API কল","Bearer access token সহ রিকোয়েস্ট → verifyAccess: সাইন ঠিক? ব্ল্যাকলিস্টে নেই? → ডাটা"],
+["৫ মেয়াদ শেষ","১৫ মিনিট পর API বলে 401 (expired)"],
+["৬ Refresh","ফ্রন্টেন্ডের interceptor চুপচাপ <code>/refresh</code> কল করে; কুকি ব্রাউজার নিজে পাঠায়"],
+["৭ Rotation","সার্ভার Redis থেকে পুরনো jti মোছে (একবারই ব্যবহার্য), নতুন access + নতুন refresh দেয়; রিকোয়েস্ট আবার চলে"],
+["৮ চুরি ধরা","চোর পুরনো refresh আবার পাঠালে Redis এ jti নেই (del=0) → <b>reuse detected</b> → ইউজারের সব সেশন revoke"],
+["৯ Logout","refresh jti মোছা + access jti ব্ল্যাকলিস্টে (বাকি মেয়াদ পর্যন্ত) + কুকি clear"]]));
+</script>
+
+<h2>২. Refresh Token Rotation ও Revoke</h2>
+<p><b>Rotation:</b> প্রতিবার refresh করলে পুরনো refresh token বাতিল, নতুন একটা আসে। প্রতিটি refresh token <b>একবারই</b> চলে। <b>Reuse detection:</b> বাতিল টোকেন আবার এলে বোঝা যায় কেউ চুরি করেছে (আসল ইউজার বা চোর, একজন পুরনোটা ব্যবহার করছে) — তাই সেই ইউজারের সব সেশন বন্ধ করে নতুন করে লগইন করানো হয়।</p>
+<p><b>Revoke তিন রকম:</b></p>
+<table><tr><th>ধরন</th><th>কখন</th><th>কীভাবে</th></tr><tr><td>একটি সেশন</td><td>Logout</td><td>refresh jti মোছো + access jti ব্ল্যাকলিস্ট</td></tr><tr><td>সব সেশন</td><td>"সব ডিভাইস থেকে লগআউট", পাসওয়ার্ড বদল, চুরি সন্দেহ</td><td><code>rts:user</code> সেটের সব jti মোছো</td></tr><tr><td>Access token এখনই</td><td>অ্যাকাউন্ট ব্যান/লগআউট</td><td><code>bl:jti</code> Redis এ, TTL = বাকি মেয়াদ</td></tr></table>
+<script type="text/plain" data-f="utils/tokens.js">
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const redis = require('../config/redis');
+
+const ACCESS_TTL = 15 * 60;        // ১৫ মিনিট (সেকেন্ডে)
+const REFRESH_TTL = 7 * 24 * 3600; // ৭ দিন
+
+// Access token: ছোট মেয়াদ। jti = টোকেনের ইউনিক আইডি (revoke এ লাগে)
+exports.signAccess = (user) =>
+  jwt.sign({ sub: user._id.toString(), email: user.email, jti: crypto.randomUUID() },
+    process.env.ACCESS_SECRET, { expiresIn: ACCESS_TTL });
+
+// Refresh token: লম্বা মেয়াদ। Redis এ jti থাকলেই টোকেন বৈধ
+exports.signRefresh = async (user) => {
+  const jti = crypto.randomUUID();
+  const token = jwt.sign({ sub: user._id.toString(), jti }, process.env.REFRESH_SECRET, { expiresIn: REFRESH_TTL });
+  await redis.set(`rt:${user._id}:${jti}`, '1', 'EX', REFRESH_TTL); // বৈধ তালিকায় রাখো
+  await redis.sadd(`rts:${user._id}`, jti);                          // ইউজারের সব সেশনের তালিকা
+  return token;
+};
+
+// Rotation: পুরনো refresh বাতিল করে ইউজার আইডি ফেরত দেয়
+exports.rotate = async (oldToken) => {
+  const p = jwt.verify(oldToken, process.env.REFRESH_SECRET);   // ভুল/মেয়াদোত্তীর্ণ হলে throw
+  const removed = await redis.del(`rt:${p.sub}:${p.jti}`);      // 1 = ছিল, 0 = আগেই ব্যবহৃত
+  if (removed === 0) {
+    await exports.revokeAll(p.sub);                              // reuse ধরা পড়ল → সব সেশন বাতিল
+    throw new Error('Refresh token reuse detected');
+  }
+  await redis.srem(`rts:${p.sub}`, p.jti);
+  return p.sub;
+};
+
+// একটি সেশন বাতিল (logout)
+exports.revokeOne = async (token) => {
+  const p = jwt.decode(token);               // মেয়াদ শেষ হলেও পড়া যায়
+  if (!p) return;
+  await redis.del(`rt:${p.sub}:${p.jti}`);
+  await redis.srem(`rts:${p.sub}`, p.jti);
+};
+
+// ইউজারের সব সেশন বাতিল
+exports.revokeAll = async (userId) => {
+  const jtis = await redis.smembers(`rts:${userId}`);
+  const pipe = redis.pipeline();             // একসাথে অনেক কমান্ড
+  jtis.forEach((j) => pipe.del(`rt:${userId}:${j}`));
+  pipe.del(`rts:${userId}`);
+  await pipe.exec();
+};
+
+// Access token এখনই বাতিল: jti ব্ল্যাকলিস্টে, বাকি মেয়াদ পর্যন্ত
+exports.blacklistAccess = async (payload) => {
+  const ttl = payload.exp - Math.floor(Date.now() / 1000);
+  if (ttl > 0) await redis.set(`bl:${payload.jti}`, '1', 'EX', ttl);
+};
+</script>
+<script type="text/plain" data-f="middlewares/verifyAccess.js">
+const jwt = require('jsonwebtoken');
+const redis = require('../config/redis');
+
+module.exports = async (req, res, next) => {
+  const h = req.headers.authorization;
+  if (!h || !h.startsWith('Bearer ')) return res.status(401).send({ message: 'Unauthorized' });
+  try {
+    const payload = jwt.verify(h.split(' ')[1], process.env.ACCESS_SECRET); // সাইন ও মেয়াদ চেক
+    // ব্ল্যাকলিস্টে থাকলে (logout/ban) বাতিল
+    if (await redis.get(`bl:${payload.jti}`)) return res.status(401).send({ message: 'Token revoked' });
+    req.user = payload; // { sub, email, jti }
+    next();
+  } catch (e) {
+    // মেয়াদ শেষ বা ভুল — ফ্রন্টেন্ড ৪০১ পেয়ে /refresh চেষ্টা করবে
+    return res.status(401).send({ message: 'Token expired or invalid' });
+  }
+};
+</script>
+<h3>ফ্রন্টেন্ড: স্বয়ংক্রিয় refresh</h3>
+<script type="text/plain" data-f="src/utils/axiosSecure.js (refresh সহ)">
+import axios from 'axios';
+
+let accessToken = null; // মেমরিতে রাখি — localStorage এ নয়, তাই XSS এ চুরি কঠিন
+export const setAccessToken = (t) => { accessToken = t; };
+
+// withCredentials: true না দিলে ব্রাউজার refresh কুকি পাঠাবে না
+const api = axios.create({ baseURL: import.meta.env.VITE_API_URL, withCredentials: true });
+
+// প্রতি রিকোয়েস্টে access token বসাও
+api.interceptors.request.use((c) => {
+  if (accessToken) c.headers.authorization = `Bearer ${accessToken}`;
+  return c;
+});
+
+let refreshing = null; // একসাথে অনেক ৪০১ এলেও refresh হবে একবারই
+api.interceptors.response.use((r) => r, async (err) => {
+  const original = err.config;
+  // ৪০১ এলে এবং আগে retry না হয়ে থাকলে refresh করে আবার চেষ্টা
+  if (err.response?.status === 401 && !original._retry && !original.url.includes('/api/auth/')) {
+    original._retry = true;
+    refreshing = refreshing || axios
+      .post(`${import.meta.env.VITE_API_URL}/api/auth/refresh`, null, { withCredentials: true })
+      .finally(() => { refreshing = null; });
+    try {
+      const { data } = await refreshing;
+      setAccessToken(data.accessToken); // নতুন access token
+      return api(original);             // আগের রিকোয়েস্ট আবার
+    } catch {
+      setAccessToken(null);
+      window.location.href = '/login';  // refresh ও ব্যর্থ → আবার লগইন
+    }
+  }
+  return Promise.reject(err);
+});
+export default api;
+</script>
+<div class="box w">⚠️ CORS এ <code>credentials: true</code> ও নির্দিষ্ট origin (<code>*</code> নয়) লাগবে। ক্রস-সাইট ডেপ্লয়ে কুকিতে <code>sameSite:'none'</code> + <code>secure:true</code>।</div>
+
+<h2>৩. Redis</h2>
+<p>Redis হলো মেমরিতে চলা অতি দ্রুত key-value ডাটাবেজ, key তে মেয়াদ (TTL) বসানো যায়। এখানে ৪ কাজে লাগছে: <b>refresh সেশন</b>, <b>access ব্ল্যাকলিস্ট</b>, <b>রেট-লিমিট কাউন্টার</b>, <b>API ক্যাশ</b>। TTL শেষে key নিজে মুছে যায় — ক্লিনআপ লাগে না।</p>
+<script type="text/plain" data-f="Terminal">
+# লোকালি Redis চালাও (Docker লাগবে) অথবা Upstash এর ফ্রি ক্লাউড Redis নাও
+docker run -d --name redis -p 6379:6379 redis
+npm install ioredis
+</script>
+<script type="text/plain" data-f="config/redis.js">
+const Redis = require('ioredis');
+
+// লোকালে redis://127.0.0.1:6379, ক্লাউডে Upstash/Redis Cloud এর URL (.env এ)
+const redis = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
+
+redis.on('connect', () => console.log('Redis Connected'));
+redis.on('error', (e) => console.log('Redis error:', e.message));
+
+module.exports = redis;
+</script>
+
+<h2>৪. Rate Limit</h2>
+<p>একই ক্লায়েন্ট নির্দিষ্ট সময়ে কতবার রিকোয়েস্ট করতে পারবে তার সীমা। লগইনে পাসওয়ার্ড অনুমান (brute-force) ঠেকাতে সবচেয়ে জরুরি। কাউন্টার Redis এ রাখলে সার্ভার রিস্টার্ট বা একাধিক সার্ভারেও সীমা ঠিক থাকে। সীমা পেরোলে <b>429 Too Many Requests</b>।</p>
+<script type="text/plain" data-f="Terminal">
+npm install express-rate-limit rate-limit-redis
+</script>
+<script type="text/plain" data-f="middlewares/rateLimit.js">
+const rateLimit = require('express-rate-limit');
+const { RedisStore } = require('rate-limit-redis');
+const redis = require('../config/redis');
+
+// কমন তৈরির ফাংশন: কাউন্টার Redis এ থাকবে
+const make = (prefix, windowMs, limit, extra = {}) => rateLimit({
+  windowMs,                    // সময়ের জানালা (মিলিসেকেন্ড)
+  limit,                       // জানালায় সর্বোচ্চ রিকোয়েস্ট
+  standardHeaders: true,       // RateLimit-* হেডার পাঠায়
+  legacyHeaders: false,
+  store: new RedisStore({ prefix: `rl:${prefix}:`, sendCommand: (...args) => redis.call(...args) }),
+  message: { message: 'অনেক বেশি রিকোয়েস্ট, কিছুক্ষণ পরে চেষ্টা করো' },
+  ...extra,
+});
+
+// সব API: ১৫ মিনিটে ১০০
+exports.globalLimiter = make('global', 15 * 60 * 1000, 100);
+
+// লগইন/2FA: ১৫ মিনিটে ৫ বার, ইমেইল ধরে গোনা; সফল হলে গোনা হয় না
+exports.loginLimiter = make('login', 15 * 60 * 1000, 5, {
+  keyGenerator: (req) => (req.body?.email || req.body?.tempToken || 'unknown').toLowerCase(),
+  skipSuccessfulRequests: true,
+});
+</script>
+<div class="box i">Vercel/প্রক্সির পেছনে চালালে <code>app.set('trust proxy', 1)</code> দাও, নইলে সবার IP এক দেখাবে।</div>
+
+<h2>৫. Argon2 দিয়ে পাসওয়ার্ড হ্যাশ</h2>
+<p>পাসওয়ার্ড কখনো সাধারণ টেক্সটে বা SHA/MD5 তে রাখবে না। Argon2id স্বয়ংক্রিয় <b>salt</b> দেয় এবং ইচ্ছাকৃতভাবে মেমরি ও সময় খরচ করায়, ফলে GPU দিয়ে ব্রুট-ফোর্স ব্যয়বহুল। বর্তমানে OWASP এর প্রথম সুপারিশ (bcrypt এর চেয়ে আধুনিক)।</p>
+<script type="text/plain" data-f="Terminal">
+npm install argon2
+</script>
+<script type="text/plain" data-f="utils/password.js">
+const argon2 = require('argon2');
+
+// argon2id: GPU ও side-channel দুই আক্রমণেই শক্ত
+const OPTIONS = {
+  type: argon2.argon2id,
+  memoryCost: 19456, // ~19MB মেমরি লাগবে প্রতি হ্যাশে
+  timeCost: 2,       // কতবার ঘুরবে
+  parallelism: 1,
+};
+
+// রেজিস্টারে: salt সহ হ্যাশ স্ট্রিং বানায় — এটাই DB তে যায়
+exports.hashPassword = (plain) => argon2.hash(plain, OPTIONS);
+
+// লগইনে: হ্যাশ ও দেওয়া পাসওয়ার্ড মেলায় (true/false)
+exports.verifyPassword = (hash, plain) => argon2.verify(hash, plain);
+</script>
+
+<h2>৬. 2FA (TOTP — Google Authenticator)</h2>
+<p>পাসওয়ার্ড জানলেও ঢোকা যাবে না, ফোনের অ্যাপের ৬ ডিজিট কোডও লাগবে, যা প্রতি ৩০ সেকেন্ডে বদলায়। সার্ভার ও অ্যাপ একই <b>secret</b> থেকে সময় ধরে কোড হিসাব করে।</p>
+<table><tr><th>ধাপ</th><th>কী ঘটে</th></tr><tr><td>Setup</td><td>সার্ভার secret বানায় → QR কোড দেখায় → ইউজার অ্যাপে স্ক্যান করে</td></tr><tr><td>Enable</td><td>ইউজার অ্যাপের কোড দেয় → ঠিক হলে 2FA চালু (আগে যাচাই না করে চালু করবে না)</td></tr><tr><td>Login</td><td>পাসওয়ার্ড ঠিক → <code>tempToken</code> (৫ মিনিট) → কোড দিলে তবেই access+refresh</td></tr></table>
+<script type="text/plain" data-f="Terminal">
+npm install otplib@12 qrcode
+</script>
+<script type="text/plain" data-f="utils/twofa.js">
+const { authenticator } = require('otplib');
+const QRCode = require('qrcode');
+
+// নতুন secret ও অ্যাপে যোগ করার otpauth লিংক বানায়
+exports.generateSecret = (email) => {
+  const secret = authenticator.generateSecret();
+  const otpauth = authenticator.keyuri(email, 'SecureApp', secret); // অ্যাপে যে নামে দেখাবে
+  return { secret, otpauth };
+};
+
+// otpauth লিংক → QR ছবি (data URL, <img src> এ বসানো যায়)
+exports.qrDataUrl = (otpauth) => QRCode.toDataURL(otpauth);
+
+// ইউজারের দেওয়া ৬ ডিজিট কোড সঠিক কিনা
+exports.verifyCode = (code, secret) => authenticator.check(code, secret);
+</script>
+<div class="box w">প্রোডাকশনে DB তে secret সরাসরি না রেখে এনক্রিপ্ট করে রাখো, আর একবার-ব্যবহার্য ব্যাকআপ কোডও দাও (ফোন হারালে)।</div>
+
+<h2>৭. API Cache (Redis)</h2>
+<p>যে GET রেসপন্স বারবার একই থাকে সেটা ডাটাবেজ থেকে না এনে Redis থেকে দিলে কয়েক গুণ দ্রুত হয়। নিয়ম: <b>GET কে cache, লেখার (POST/PUT/DELETE) সময় cache মুছো</b> — নইলে পুরনো ডাটা দেখাবে। ব্যক্তিগত ডাটার key তে ইউজার আইডি রাখো, নইলে একজনের ডাটা আরেকজন পাবে।</p>
+<h3>🎬 ইন্টারেক্টিভ: Cache HIT / MISS</h3>
+<div id="f2"></div>
+<script>
+addEventListener('DOMContentLoaded',()=>flow('f2',[
+["১ GET /tasks","প্রথমবার রিকোয়েস্ট আসে; key = <code>cache:userId:/api/tasks</code>"],
+["২ Redis খোঁজা","key পাওয়া গেল না → <b>MISS</b>"],
+["৩ MongoDB","ডাটাবেজ থেকে টাস্ক আনা (ধীর)"],
+["৪ Redis এ রাখা","রেসপন্স JSON হিসেবে TTL ৬০ সেকেন্ডে সেভ; ইউজারকে <code>X-Cache: MISS</code>"],
+["৫ আবার GET","৬০ সেকেন্ডের মধ্যে একই রিকোয়েস্ট → Redis এ পাওয়া গেল → <b>HIT</b>, DB ছোঁয়াই হয় না"],
+["৬ POST /tasks","নতুন টাস্ক যোগ → <code>clearUserCache</code> দিয়ে ওই ইউজারের cache মোছা"],
+["৭ আবার GET","cache নেই → MISS → নতুন ডাটা আসে ✔ (পুরনো ডাটা দেখানোর ভুল এড়ানো গেল)"]]));
+</script>
+<script type="text/plain" data-f="middlewares/cache.js">
+const redis = require('../config/redis');
+
+// GET রুটে ব্যবহার: router.get('/', cache(60), handler) — ttl সেকেন্ডে
+exports.cache = (ttl = 60) => async (req, res, next) => {
+  // ইউজারভেদে আলাদা key, যাতে ব্যক্তিগত ডাটা মিশে না যায়
+  const key = `cache:${req.user ? req.user.sub : 'public'}:${req.originalUrl}`;
+  const hit = await redis.get(key);
+  if (hit) {
+    res.set('X-Cache', 'HIT');
+    return res.send(JSON.parse(hit)); // DB তে না গিয়েই উত্তর
+  }
+  // MISS: res.json কে মুড়ে দিই, যাতে উত্তর যাওয়ার সময় Redis এ রেখে দেয়
+  const original = res.json.bind(res);
+  res.json = (body) => {
+    redis.set(key, JSON.stringify(body), 'EX', ttl); // ttl পরে নিজে মুছে যাবে
+    res.set('X-Cache', 'MISS');
+    return original(body);
+  };
+  next();
+};
+
+// লেখার পর ওই ইউজারের সব cache মোছা (ছোট প্রজেক্টে keys ঠিক আছে, বড়তে SCAN ব্যবহার করো)
+exports.clearUserCache = async (userId) => {
+  const keys = await redis.keys(`cache:${userId}:*`);
+  if (keys.length) await redis.del(keys);
+};
+</script>
+<div class="box s">✅ সব উপাদান তৈরি। এবার সবকিছু একসাথে জুড়ে ছোট প্রজেক্টে দেখো: <a href="secure-project.html"><b>সিকিউর মিনি প্রজেক্ট →</b></a></div>
+</main><script src="app.js"></script></body></html>

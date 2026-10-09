@@ -1,0 +1,56 @@
+<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ইন্টারেক্টিভ রোডম্যাপ — MERN Guide</title><link rel="stylesheet" href="style.css"></head><body data-p="roadmap"><main>
+<a href="index.html" class="fb" style="text-decoration:none;display:inline-block;margin-bottom:12px">← হোম পেজে ফিরে যাও</a>
+<h2>⭐ ইন্টারেক্টিভ রোডম্যাপ — কখন কী করবে</h2>
+<div class="box i">নিচে ফ্রন্টেন্ড/ব্যাকেন্ড ট্যাব বেছে <b>পরের ধাপ</b> চাপো বা নম্বরে ক্লিক করো। যে ফাইল এই ধাপে বানাবে সেটা <b style="color:#4F46E5">নীল জ্বলজ্বল</b> করবে, আগে বানানো ফাইল <b style="color:#16a34a">সবুজ</b>, ভবিষ্যতেরগুলো ঝাপসা। ধাপের নম্বর = আসল করার ক্রম।</div>
+<div class="tabs"><button id="t-be" class="on">📦 ব্যাকেন্ড (task-api)</button> <button id="t-fe">🎨 ফ্রন্টেন্ড (my-project)</button></div>
+<div class="pb"><i id="pb"></i></div><div class="dots" id="dots"></div>
+<h3 id="ttl"></h3><div id="grp"></div>
+<div class="box s"><b>কী করবে:</b><div class="cmd" id="what"></div><b>কেন এখন:</b> <span id="why"></span></div>
+<div class="box w" id="nxt"></div>
+<button class="fb" id="pv">◀ আগের ধাপ</button><button class="fb" id="nx">পরের ধাপ ▶</button><button class="fb" id="ap">▶▶ অটো প্লে</button> <a href="project.html" class="fb" style="text-decoration:none;display:inline-block">এই ফাইলগুলোর কোড দেখো →</a>
+<script>
+// ধাপ: [শিরোনাম, [ফাইল], কী করবে, কেন এখন]
+const R={
+be:[
+["প্রজেক্ট ও প্যাকেজ",["package.json"],"mkdir task-api && cd task-api\nnpm init -y\nnpm install express cors dotenv jsonwebtoken mongodb\nnpm install -D nodemon","সবকিছুর ভিত্তি — প্যাকেজ ছাড়া import ফেল করবে"],
+["সিক্রেট ও gitignore",[".env",".gitignore"],"DB_USER, DB_PASS, JWT_SECRET লেখো; .gitignore এ .env দাও","পরের ফাইলগুলো process.env থেকে পড়বে"],
+["ডাটাবেজ কানেকশন",["config/db.js"],"MongoClient দিয়ে connectDB() ও getDB() লেখো","models এটা ব্যবহার করবে"],
+["models",["models/user.model.js","models/task.model.js"],"getDB().collection('users'/'tasks') ফেরত দাও","controller এ ডাটা আনতে লাগবে"],
+["verifyToken",["middlewares/verifyToken.js"],"Bearer টোকেন যাচাই, req.decoded সেট","task রুট সুরক্ষিত করতে routes এর আগেই দরকার"],
+["controllers",["controllers/auth.controller.js","controllers/user.controller.js","controllers/task.controller.js"],"আসল লজিক: টোকেন তৈরি, ইউজার সেভ, টাস্ক CRUD","routes এগুলো import করে জুড়বে"],
+["routes",["routes/auth.routes.js","routes/user.routes.js","routes/task.routes.js"],"URL → controller ম্যাপ করো; task এ router.use(verifyToken)","app.js এ যুক্ত করার জন্য তৈরি থাকতে হবে"],
+["app.js",["app.js"],"cors, express.json, app.use('/api/...') লেখো","সব অংশ এখানে জোড়া লাগে"],
+["index.js",["index.js"],"dotenv লোড → connectDB() → app.listen()\nnpm run dev  →  'MongoDB Connected' + 'Server running' দেখলে সফল","শেষ ফাইল; সার্ভার এখান থেকেই চালু হয়"],
+["টেস্ট ও ডেপ্লয় কনফিগ",["vercel.json"],"curl দিয়ে /api/auth/jwt ও /api/tasks টেস্ট করো; vercel.json যোগ করে vercel চালাও","ফ্রন্টেন্ড জোড়ার আগে ব্যাকেন্ড যে ঠিক চলছে নিশ্চিত হও"]],
+fe:[
+["প্রজেক্ট তৈরি ও প্যাকেজ",["package.json"],"npm create vite@latest my-project -- --template react\ncd my-project && npm install\nnpm i react-router-dom axios firebase daisyui\nnpm i -D tailwindcss postcss autoprefixer","ভিত্তি; এর পর সব ফাইল এখানেই বসবে"],
+["Tailwind + DaisyUI",["tailwind.config.js","src/index.css"],"npx tailwindcss init -p\nconfig এ plugins: [require('daisyui')]; index.css এ @tailwind ৩টি","UI ক্লাস (btn, card) কাজ করার জন্য"],
+["env ফাইল",[".env.local"],"Firebase কী ও VITE_API_URL=http://localhost:5000 বসাও (Vite রিস্টার্ট)","পরের ফাইলগুলো import.meta.env পড়বে"],
+["Firebase কনফিগ",["src/firebase/firebase.config.js"],"initializeApp + getAuth লিখে auth এক্সপোর্ট করো","AuthContext এটা import করবে"],
+["AuthContext",["src/context/AuthContext.jsx"],"login/register/logout + onAuthStateChanged + JWT আনা","বাকি প্রায় সবাই এর ওপর নির্ভর করে"],
+["useAuth হুক",["src/hooks/useAuth.js"],"useContext(AuthContext) রিটার্ন করো","পেজ ও কম্পোনেন্টে সহজে ইউজার পাওয়ার জন্য"],
+["axiosSecure",["src/utils/axiosSecure.js"],"baseURL + interceptor যাতে টোকেন অটো যায়","Dashboard এটা দিয়ে ব্যাকেন্ডে কথা বলবে"],
+["কম্পোনেন্ট",["src/components/Loader.jsx","src/components/Navbar.jsx","src/components/Footer.jsx"],"Loader স্পিনার, Navbar (লগইন অনুযায়ী মেনু), Footer","PrivateRoute ও App এগুলো ব্যবহার করে"],
+["PrivateRoute",["src/routes/PrivateRoute.jsx"],"loading হলে Loader, user না থাকলে <Navigate to='/login'>","Router এ প্রোটেক্টেড পেজ মোড়াতে লাগবে"],
+["পেজগুলো",["src/pages/Home.jsx","src/pages/Login.jsx","src/pages/Register.jsx","src/pages/Dashboard.jsx"],"Home, Login, Register, Dashboard (টাস্ক CRUD)","এগুলোই ইউজার দেখে; হুক ও axiosSecure আগে থেকে তৈরি"],
+["App.jsx",["src/App.jsx"],"Navbar + <Outlet/> + Footer","সব পেজের কাঠামো"],
+["Router",["src/routes/Router.jsx"],"createBrowserRouter এ সব রুট; /dashboard কে PrivateRoute এ মোড়াও","পেজ ও PrivateRoute তৈরির পরেই সম্ভব"],
+["main.jsx ও রান",["src/main.jsx"],"AuthProvider + RouterProvider রেন্ডার করো\nnpm run dev → http://localhost:5173 (ব্যাকেন্ড চালু রেখে)","সবকিছু জোড়া লাগানোর শেষ ধাপ"]]};
+let cur='be',k=0,tm=null;
+function draw(){const S=R[cur],g={};
+  S.forEach((s,n)=>s[1].forEach(f=>{const d=f.includes('/')?f.split('/').slice(0,-1).join('/')+'/':'(root)';(g[d]=g[d]||[]).push([f,n])}));
+  document.getElementById('grp').innerHTML=Object.entries(g).map(([d,fs])=>'<div class=fg><b>'+d+'</b>'+fs.map(([f,n])=>'<span class="fc '+(n<k?'dn':n==k?'nw':'')+'">'+f.split('/').pop()+'</span>').join('')+'</div>').join('');
+  document.getElementById('dots').innerHTML=S.map((s,n)=>'<button class="'+(n<k?'dn':n==k?'on':'')+'" data-n='+n+' title="'+s[0]+'">'+(n+1)+'</button>').join('');
+  document.getElementById('ttl').textContent='ধাপ '+(k+1)+'/'+S.length+': '+S[k][0];
+  document.getElementById('what').textContent=S[k][2];document.getElementById('why').textContent=S[k][3];
+  document.getElementById('nxt').innerHTML=k<S.length-1?'👉 <b>এরপর:</b> '+S[k+1][0]:'🎉 সব ধাপ শেষ! এবার <a href=quiz.html>কুইজ</a> দাও।';
+  document.getElementById('pb').style.width=((k+1)/S.length*100)+'%';
+  document.getElementById('t-be').classList.toggle('on',cur=='be');document.getElementById('t-fe').classList.toggle('on',cur=='fe')}
+const go=n=>{k=Math.max(0,Math.min(R[cur].length-1,n));draw()};
+document.getElementById('dots').onclick=e=>{if(e.target.dataset.n!=null)go(+e.target.dataset.n)};
+document.getElementById('nx').onclick=()=>go(k+1);document.getElementById('pv').onclick=()=>go(k-1);
+['be','fe'].forEach(t=>document.getElementById('t-'+t).onclick=()=>{cur=t;k=0;draw()});
+document.getElementById('ap').onclick=function(){if(tm){clearInterval(tm);tm=null;this.textContent='▶▶ অটো প্লে'}else{this.textContent='⏸ থামাও';tm=setInterval(()=>{if(k>=R[cur].length-1){clearInterval(tm);tm=null;document.getElementById('ap').textContent='▶▶ অটো প্লে'}else go(k+1)},2500)}};
+draw();
+</script>
+</main><script src="app.js"></script></body></html>
